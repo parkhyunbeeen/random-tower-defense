@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>랜덤 타워 디펜스 — 프로토타입</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🎲</text></svg>" />
+  <link rel="stylesheet" href="./css/reset.css" />
+  <link rel="stylesheet" href="./css/game.css" />
+</head>
+<body>
+  <div class="layout">
+
+    <!-- ===== 좌측: 미션 ===== -->
+    <aside class="side">
+      <h2 class="side-title">미션</h2>
+      <p class="side-sub">전용 보스를 소환해 처치하면 골드를 받습니다. 놓쳐도 라이프는 깎이지 않습니다.</p>
+      <div id="missionList" class="card-list"></div>
+    </aside>
+
+    <!-- ===== 중앙: 게임 ===== -->
+    <main class="main">
+
+      <header class="hud">
+        <div class="hud-item"><span class="ico">💰</span><span id="gold">0</span><small>골드</small></div>
+        <div class="hud-item"><span class="ico">❤️</span><span id="life">0</span><small>라이프</small></div>
+        <div class="hud-item"><span class="ico">🌊</span><span id="wave">0</span><small>/ <span id="waveMax">30</span> 라운드</small></div>
+        <div class="hud-spacer"></div>
+        <div class="hud-stats" id="statLine"></div>
+      </header>
+
+      <div class="stage">
+        <canvas id="game"></canvas>
+      </div>
+
+      <div class="actions">
+        <button id="btnWave" class="btn primary">⏩ 바로 시작</button>
+        <button id="btnSpeed" class="btn speed">▶ 1배속</button>
+        <button id="btnRestart" class="btn danger" hidden>↻ 재시작</button>
+      </div>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2 id="selTitle">선택된 타워 없음</h2>
+          <span id="selBadge" class="badge"></span>
+        </div>
+        <p id="selStats" class="stats">빈 슬롯을 클릭하면 랜덤 타워가 소환됩니다.</p>
+        <p id="selDesc" class="desc"></p>
+        <div id="mergeButtons" class="merge-row"></div>
+        <div class="panel-actions">
+          <button id="btnLegend" class="btn legend" hidden>★ 전설 합성</button>
+          <button id="btnSell" class="btn ghost" hidden>💰 판매</button>
+        </div>
+      </section>
+
+      <section class="help">
+        <details>
+          <summary>조작 방법</summary>
+          <ul>
+            <li>빈 슬롯 <b>클릭</b> → 골드를 소모하고 <b>랜덤 일반 타워</b> 소환</li>
+            <li>타워 <b>클릭</b> → 선택(사거리 표시). 아래에 <b>고급 / 희귀 / 영웅</b> 합성 버튼이 각각 표시됩니다</li>
+            <li>등급을 건너뛸 수 있습니다 — 같은 일반 타워가 <b>8개</b>면 한 번에 <b>영웅</b>까지</li>
+            <li>합성 결과는 <b>클릭한 타워의 위치</b>에 생성됩니다</li>
+            <li><b>영웅</b> 타워를 클릭한 뒤 다른 영웅 2개를 추가로 클릭 → 조합표에 맞으면 <b>전설</b> 생성</li>
+            <li><kbd>ESC</kbd> → 선택 해제 / <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> → 배속 전환</li>
+          </ul>
+        </details>
+        <details>
+          <summary>전설 조합표</summary>
+          <ul id="recipeList"></ul>
+        </details>
+      </section>
+
+    </main>
+
+    <!-- ===== 우측: 강화 ===== -->
+    <aside class="side">
+      <h2 class="side-title">강화</h2>
+      <p class="side-sub">등급별로 해당 타워 전체의 공격력이 올라갑니다. 레벨당 <b>+5%</b>.</p>
+      <div id="upgradeList" class="card-list"></div>
+    </aside>
+
+  </div>
+
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>

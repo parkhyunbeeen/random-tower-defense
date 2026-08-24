@@ -1,0 +1,2345 @@
+<!DOCTYPE html>
+<!--
+  랜덤 타워 디펜스 — 단일 파일 빌드 (더블클릭으로 실행 가능)
+  이 파일은 src/ 폴더의 모듈들을 하나로 합친 결과물입니다.
+  코드를 수정할 때는 src/ 를 고친 뒤 build.md 안내대로 다시 빌드하세요.
+-->
+
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>랜덤 타워 디펜스 — 프로토타입</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🎲</text></svg>" />
+  <style>
+/* reset.css — 최소 리셋 */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+h1, h2, h3, p, ul, figure { margin: 0; padding: 0; }
+ul { list-style: none; }
+button { font: inherit; color: inherit; border: none; background: none; cursor: pointer; }
+canvas { display: block; }
+img { max-width: 100%; }
+
+/* ============================================================
+   game.css — 게임 화면 스타일
+   좌측 미션 · 중앙 게임 · 우측 강화의 3단 구성
+   ============================================================ */
+
+:root {
+  --bg: #0b0e14;
+  --panel: #151a24;
+  --panel-2: #1c2230;
+  --line: #2a3242;
+  --text: #e8eefc;
+  --muted: #8b97ad;
+  --accent: #5ddc7a;
+  --gold: #ffd23d;
+  --legend: #ffc83d;
+  --mission: #4fd1a5;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Pretendard", "Malgun Gothic", "맑은 고딕", system-ui, sans-serif;
+  padding: 18px 12px 48px;
+}
+
+/* --- 3단 레이아웃 --- */
+.layout {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 768px) 236px;
+  gap: 12px;
+  justify-content: center;
+  align-items: start;
+}
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* --- 사이드 패널 --- */
+.side {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  position: sticky;
+  top: 18px;
+}
+.side-title { font-size: 15px; font-weight: 700; }
+.side-sub { font-size: 11px; color: var(--muted); line-height: 1.5; margin-top: 4px; }
+.side-sub b { color: var(--text); }
+.card-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+
+/* 미션 / 강화 카드 공통 */
+.card {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px;
+}
+.card-top { display: flex; align-items: center; gap: 6px; }
+.card-name { font-size: 13px; font-weight: 700; flex: 1; }
+.card-tag {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.card-meta { font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+.card-meta b { color: var(--text); font-variant-numeric: tabular-nums; }
+.card-btn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 7px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  transition: filter .12s;
+}
+.card-btn:hover:not(:disabled) { filter: brightness(1.35); }
+.card-btn:disabled { opacity: .35; cursor: not-allowed; }
+
+/* 미션 상태별 강조 */
+.card.ready { border-color: var(--mission); }
+.card.ready .card-tag { color: var(--mission); border-color: var(--mission); }
+.card.ready .card-btn { background: #14382f; border-color: #2f7a63; color: var(--mission); }
+.card.active { border-color: var(--gold); }
+.card.active .card-tag { color: var(--gold); border-color: var(--gold); }
+.card.done { opacity: .55; }
+
+/* 강화 진행 바 */
+.bar { height: 5px; background: #10141c; border-radius: 3px; margin-top: 7px; overflow: hidden; }
+.bar > i { display: block; height: 100%; border-radius: 3px; }
+
+/* --- 상단 HUD --- */
+.hud {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+.hud-item { display: flex; align-items: baseline; gap: 6px; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.hud-item .ico { font-size: 15px; }
+.hud-item small { font-size: 11px; font-weight: 400; color: var(--muted); }
+.hud-spacer { flex: 1; }
+.hud-stats { font-size: 11px; color: var(--muted); }
+
+/* --- 게임 캔버스 --- */
+.stage {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  line-height: 0;
+}
+#game { width: 100%; height: auto; cursor: pointer; }
+
+/* --- 버튼 --- */
+.actions { display: flex; gap: 8px; }
+.btn {
+  flex: 1;
+  padding: 11px 14px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  font-size: 14px;
+  font-weight: 600;
+  transition: filter .12s, opacity .12s;
+}
+.btn:hover:not(:disabled) { filter: brightness(1.25); }
+.btn:disabled { opacity: .38; cursor: not-allowed; }
+.btn.primary { background: #1f3a2a; border-color: #2f6b45; }
+.btn.legend  { background: #4a3a12; border-color: #a78230; color: var(--legend); }
+.btn.danger  { background: #43202a; border-color: #8a3a4c; }
+.btn.ghost   { background: transparent; }
+.btn.speed   { flex: 0 0 118px; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.btn.speed.active { background: #3a2a12; border-color: #a78230; color: var(--gold); }
+
+/* --- 선택 정보 패널 --- */
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  min-height: 132px;
+}
+.panel-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.panel-head h2 { font-size: 16px; font-weight: 700; }
+.badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: #10141c;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.badge:empty { display: none; }
+.stats { font-size: 13px; color: #c4cfe2; }
+.stats b { color: var(--text); }
+.desc { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+
+/* 등급별 합성 버튼 줄 */
+.merge-row { display: flex; gap: 8px; margin-top: 10px; }
+.merge-row:empty { display: none; }
+.merge-btn {
+  flex: 1;
+  padding: 9px 6px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+  transition: filter .12s;
+}
+.merge-btn:hover:not(:disabled) { filter: brightness(1.3); }
+.merge-btn:disabled { opacity: .4; cursor: not-allowed; }
+.merge-btn small {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.merge-btn.ready small { color: inherit; opacity: .8; }
+
+.panel-actions { display: flex; gap: 8px; margin-top: 8px; }
+.panel-actions .btn[hidden] { display: none; }
+
+/* --- 도움말 --- */
+.help { font-size: 12.5px; color: var(--muted); }
+.help details {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 6px;
+}
+.help summary { cursor: pointer; font-weight: 600; color: #b9c5d8; }
+.help ul { margin-top: 8px; display: flex; flex-direction: column; gap: 5px; }
+.help li { line-height: 1.5; }
+.help li::before { content: "· "; color: var(--muted); }
+.help b { color: var(--text); }
+kbd {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 11px;
+}
+
+/* --- 반응형 --- */
+@media (max-width: 1290px) {
+  .layout { grid-template-columns: minmax(0, 768px); }
+  .side { position: static; }
+  .card-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+}
+@media (max-width: 560px) {
+  .btn.speed { flex: 1; }
+  .hud { gap: 12px; flex-wrap: wrap; }
+  .hud-stats { display: none; }
+  .actions { flex-direction: column; }
+  .merge-row { flex-wrap: wrap; }
+}
+
+  </style>
+</head>
+<body>
+  <div class="layout">
+
+    <!-- ===== 좌측: 미션 ===== -->
+    <aside class="side">
+      <h2 class="side-title">미션</h2>
+      <p class="side-sub">전용 보스를 소환해 처치하면 골드를 받습니다. 놓쳐도 라이프는 깎이지 않습니다.</p>
+      <div id="missionList" class="card-list"></div>
+    </aside>
+
+    <!-- ===== 중앙: 게임 ===== -->
+    <main class="main">
+
+      <header class="hud">
+        <div class="hud-item"><span class="ico">💰</span><span id="gold">0</span><small>골드</small></div>
+        <div class="hud-item"><span class="ico">❤️</span><span id="life">0</span><small>라이프</small></div>
+        <div class="hud-item"><span class="ico">🌊</span><span id="wave">0</span><small>/ <span id="waveMax">30</span> 라운드</small></div>
+        <div class="hud-spacer"></div>
+        <div class="hud-stats" id="statLine"></div>
+      </header>
+
+      <div class="stage">
+        <canvas id="game"></canvas>
+      </div>
+
+      <div class="actions">
+        <button id="btnWave" class="btn primary">⏩ 바로 시작</button>
+        <button id="btnSpeed" class="btn speed">▶ 1배속</button>
+        <button id="btnRestart" class="btn danger" hidden>↻ 재시작</button>
+      </div>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2 id="selTitle">선택된 타워 없음</h2>
+          <span id="selBadge" class="badge"></span>
+        </div>
+        <p id="selStats" class="stats">빈 슬롯을 클릭하면 랜덤 타워가 소환됩니다.</p>
+        <p id="selDesc" class="desc"></p>
+        <div id="mergeButtons" class="merge-row"></div>
+        <div class="panel-actions">
+          <button id="btnLegend" class="btn legend" hidden>★ 전설 합성</button>
+          <button id="btnSell" class="btn ghost" hidden>💰 판매</button>
+        </div>
+      </section>
+
+      <section class="help">
+        <details>
+          <summary>조작 방법</summary>
+          <ul>
+            <li>빈 슬롯 <b>클릭</b> → 골드를 소모하고 <b>랜덤 일반 타워</b> 소환</li>
+            <li>타워 <b>클릭</b> → 선택(사거리 표시). 아래에 <b>고급 / 희귀 / 영웅</b> 합성 버튼이 각각 표시됩니다</li>
+            <li>등급을 건너뛸 수 있습니다 — 같은 일반 타워가 <b>8개</b>면 한 번에 <b>영웅</b>까지</li>
+            <li>합성 결과는 <b>클릭한 타워의 위치</b>에 생성됩니다</li>
+            <li><b>영웅</b> 타워를 클릭한 뒤 다른 영웅 2개를 추가로 클릭 → 조합표에 맞으면 <b>전설</b> 생성</li>
+            <li><kbd>ESC</kbd> → 선택 해제 / <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> → 배속 전환</li>
+          </ul>
+        </details>
+        <details>
+          <summary>전설 조합표</summary>
+          <ul id="recipeList"></ul>
+        </details>
+      </section>
+
+    </main>
+
+    <!-- ===== 우측: 강화 ===== -->
+    <aside class="side">
+      <h2 class="side-title">강화</h2>
+      <p class="side-sub">등급별로 해당 타워 전체의 공격력이 올라갑니다. 레벨당 <b>+5%</b>.</p>
+      <div id="upgradeList" class="card-list"></div>
+    </aside>
+
+  </div>
+
+  <script>
+(() => {
+  // src/js/data/config.js
+  var CONFIG = {
+    // --- 격자 / 캔버스 ---
+    grid: {
+      cols: 12,
+      rows: 8,
+      tile: 64
+    },
+    // --- 합성 규칙 ---
+    merge: {
+      // 한 등급 올리는 데 필요한 동일 계열·동일 등급 타워 수
+      // 2 = 빠른 체감(현재) / 3 = 정통 랜덤TD 방식
+      required: 2,
+      // 등급을 건너뛰는 합성도 허용합니다.
+      // 필요 개수 = required ^ (목표등급 - 현재등급)
+      //   일반 2개 → 고급 / 일반 4개 → 희귀 / 일반 8개 → 영웅
+      // 전설 조합에 필요한 영웅 타워 수 (조합표는 legendary.js)
+      legendaryRequired: 3
+    },
+    // --- 경제 ---
+    economy: {
+      startGold: 200,
+      // 초반 4회 소환 — 1~3라운드 사고사 방지
+      summonCost: 50,
+      // 소환 비용 (고정)
+      sellRatio: 0.5,
+      // 판매 시 환급 비율
+      waveBonusBase: 20,
+      // 웨이브 클리어 보너스 기본값
+      waveBonusPerWave: 4,
+      // 웨이브당 보너스 증가량
+      skipBonusPerSecond: 3,
+      // 준비시간 스킵 시 남은 초당 보너스
+      skipBonusMaxSeconds: 5
+      // 스킵 보너스로 인정되는 최대 초 (밸런스 상한)
+    },
+    // --- 등급별 강화 (우측 패널) ---
+    // 비용 = costBase × (다음 레벨)
+    //   일반: 1, 2, 3, 4, 5 …   전설: 5, 10, 15, 20 …
+    upgrade: {
+      damagePerLevel: 0.05,
+      // 레벨당 해당 등급 타워 공격력 +5%
+      tiers: [
+        { tier: 0, maxLevel: 5, costBase: 1 },
+        { tier: 1, maxLevel: 10, costBase: 2 },
+        { tier: 2, maxLevel: 15, costBase: 3 },
+        { tier: 3, maxLevel: 20, costBase: 4 },
+        { tier: 4, maxLevel: 30, costBase: 5 }
+      ]
+    },
+    // --- 라이프 ---
+    life: {
+      start: 20,
+      normalDamage: 1,
+      bossDamage: 3
+    },
+    // --- 웨이브 ---
+    wave: {
+      finalWave: 30,
+      // 최종 라운드 — 이 웨이브를 막으면 클리어
+      prepTime: 20,
+      // 웨이브 간 준비 시간(초)
+      hpGrowth: 1.32,
+      // 6라운드부터 적용되는 일반 적 체력 배율
+      earlyGrowth: 1.15,
+      // 1~5라운드는 완만하게 (초반 사고사 방지)
+      earlySoftWaves: 5,
+      bossHpGrowth: 1.2,
+      // 보스 전용(더 완만한) 체력 배율
+      rewardGrowth: 1.06,
+      // 웨이브당 보상 배율
+      bossInterval: 10,
+      // 몇 웨이브마다 보스가 등장하는지 (10/20/30)
+      bossCount: { 10: 1, 20: 2, 30: 2 }
+      // 라운드별 보스 수 (30라운드 하향)
+    },
+    // --- 게임 속도 (배속) ---
+    // 배속은 정수 배수로만 두고, 루프에서 프레임을 그 횟수만큼 쪼개어 돌립니다.
+    // (dt 를 그냥 곱하면 고속 투사체가 적을 통과해 버리는 문제가 생깁니다)
+    speed: {
+      options: [1, 2, 3],
+      default: 1
+    },
+    // --- 등급별 부가 보정 (등급 단계 t = 0..3) ---
+    rarityBonus: {
+      rangePerTier: 0.06,
+      // 사거리 +6%/단계
+      cooldownPerTier: 0.05
+      // 공격 쿨다운 -5%/단계
+    }
+  };
+  CONFIG.canvas = {
+    width: CONFIG.grid.cols * CONFIG.grid.tile,
+    height: CONFIG.grid.rows * CONFIG.grid.tile
+  };
+
+  // src/js/data/missions.js
+  var MISSIONS = [
+    {
+      id: "midboss",
+      name: "중간 보스 토벌",
+      icon: "◆",
+      enemy: "midboss",
+      /** 5라운드마다 반복 개방 (5 · 10 · 15 · 20 · 25 · 30) */
+      every: 5,
+      repeatable: true,
+      /** 보상 골드 = base + perWave × 개방된 라운드 */
+      reward: { base: 180, perWave: 26 },
+      hint: "5라운드마다 도전 가능",
+      desc: "경로에 중간 보스가 나타납니다. 처치하면 즉시 골드를 받습니다."
+    },
+    {
+      id: "elite",
+      name: "엘리트 처단",
+      icon: "✦",
+      enemy: "elite",
+      /** 15라운드부터 1회 개방 */
+      at: 15,
+      repeatable: false,
+      reward: { base: 900, perWave: 0 },
+      hint: "15라운드에 개방 · 1회 한정",
+      desc: "빠르고 단단한 엘리트. 방어력이 높아 방어 무시 계열이 유리합니다."
+    },
+    {
+      id: "gatekeeper",
+      name: "문지기 격파",
+      icon: "❖",
+      enemy: "gatekeeper",
+      /** 25라운드부터 1회 개방 */
+      at: 25,
+      repeatable: false,
+      reward: { base: 2200, perWave: 0 },
+      hint: "25라운드에 개방 · 1회 한정",
+      desc: "방어력 20의 거대한 문지기. 잡으면 최종 라운드 대비 자금을 크게 확보합니다."
+    }
+  ];
+  function isUnlockedAt(mission, wave) {
+    if (mission.every) return wave > 0 && wave % mission.every === 0;
+    return wave >= mission.at;
+  }
+  function missionReward(mission, wave) {
+    return Math.round(mission.reward.base + mission.reward.perWave * wave);
+  }
+
+  // src/js/core/state.js
+  function initialMissions() {
+    const out = {};
+    for (const m of MISSIONS) {
+      out[m.id] = {
+        /** 'locked' | 'ready' | 'active' | 'done' */
+        status: "locked",
+        unlockedWave: 0,
+        clears: 0
+      };
+    }
+    return out;
+  }
+  var state = {
+    /** @type {Phase} */
+    phase: "ready",
+    gold: 0,
+    life: 0,
+    wave: 0,
+    prepTimer: 0,
+    /** 게임 진행 배속 (1 / 2 / 3) — 재시작해도 유지됩니다 */
+    speed: CONFIG.speed.default,
+    /** 등급별 강화 레벨 (인덱스 = 등급 tier 0~4) */
+    upgrades: [0, 0, 0, 0, 0],
+    /** 미션 진행 상태 (id → { status, unlockedWave, clears }) */
+    missions: initialMissions(),
+    /** @type {Map<number, import('../entities/Tower.js').Tower>} tileIndex → Tower */
+    towers: /* @__PURE__ */ new Map(),
+    /** @type {import('../entities/Enemy.js').Enemy[]} */
+    enemies: [],
+    /** @type {import('../entities/Projectile.js').Projectile[]} */
+    projectiles: [],
+    /** @type {object[]} 짧은 시각 효과 */
+    effects: [],
+    /** @type {object[]} 떠오르는 텍스트 */
+    floaters: [],
+    /** 선택된 타일 인덱스 목록 (전설 조합 시 최대 3개) */
+    selection: [],
+    /** 스폰 대기열 */
+    spawnQueue: [],
+    spawnTimer: 0,
+    stats: { killed: 0, merges: 0, summons: 0, legendaries: 0, upgrades: 0, missions: 0 },
+    /** UI에 띄울 안내 메시지 */
+    toast: { text: "", timer: 0 }
+  };
+  function resetState() {
+    const keepSpeed = state.speed;
+    state.phase = "prep";
+    state.gold = CONFIG.economy.startGold;
+    state.life = CONFIG.life.start;
+    state.wave = 0;
+    state.prepTimer = CONFIG.wave.prepTime;
+    state.upgrades = [0, 0, 0, 0, 0];
+    state.missions = initialMissions();
+    state.towers = /* @__PURE__ */ new Map();
+    state.enemies = [];
+    state.projectiles = [];
+    state.effects = [];
+    state.floaters = [];
+    state.selection = [];
+    state.spawnQueue = [];
+    state.spawnTimer = 0;
+    state.stats = { killed: 0, merges: 0, summons: 0, legendaries: 0, upgrades: 0, missions: 0 };
+    state.toast = { text: "", timer: 0 };
+    state.speed = keepSpeed;
+  }
+  function cycleSpeed() {
+    const opts = CONFIG.speed.options;
+    const next = opts[(opts.indexOf(state.speed) + 1) % opts.length];
+    state.speed = next;
+    return next;
+  }
+  function setSpeed(value) {
+    if (CONFIG.speed.options.includes(value)) state.speed = value;
+    return state.speed;
+  }
+  function showToast(text, seconds = 2) {
+    state.toast.text = text;
+    state.toast.timer = seconds;
+  }
+  function addFloater(x, y, text, color = "#ffffff") {
+    state.floaters.push({ x, y, text, color, life: 0.9, vy: -34 });
+  }
+  function addEffect(effect) {
+    state.effects.push({ life: 0.35, maxLife: 0.35, ...effect });
+  }
+  function clearSelection() {
+    state.selection = [];
+  }
+  function selectedTowers() {
+    return state.selection.map((idx) => state.towers.get(idx)).filter(Boolean);
+  }
+
+  // src/js/data/towers.js
+  var FAMILIES = {
+    archer: {
+      id: "archer",
+      name: "궁수탑",
+      shape: "triangle",
+      color: "#3ddc84",
+      role: "단일 딜러",
+      damage: 8,
+      cooldown: 0.6,
+      range: 190,
+      projectileSpeed: 520,
+      desc: "빠른 공속과 긴 사거리. 단일 대상에게 꾸준한 피해."
+    },
+    cannon: {
+      id: "cannon",
+      name: "포탑",
+      shape: "square",
+      color: "#ff9f45",
+      role: "광역 딜러",
+      damage: 18,
+      cooldown: 1.4,
+      range: 150,
+      projectileSpeed: 340,
+      splash: 45,
+      desc: "느리지만 착탄 지점 주변에 광역 피해."
+    },
+    frost: {
+      id: "frost",
+      name: "서리탑",
+      shape: "diamond",
+      color: "#5ecbff",
+      role: "유틸",
+      damage: 5,
+      cooldown: 0.9,
+      range: 160,
+      projectileSpeed: 420,
+      slow: { amount: 0.35, duration: 1.5 },
+      desc: "피해는 낮지만 명중한 적의 이동 속도를 늦춤."
+    },
+    volt: {
+      id: "volt",
+      name: "전격탑",
+      shape: "pentagon",
+      color: "#b46bff",
+      role: "연쇄 딜러",
+      damage: 10,
+      cooldown: 1,
+      range: 170,
+      projectileSpeed: 600,
+      chain: { count: 2, falloff: 0.6, radius: 95 },
+      desc: "명중 후 주변의 다른 적에게 전기가 연쇄."
+    }
+  };
+  var FAMILY_IDS = Object.keys(FAMILIES);
+  var RARITIES = [
+    { id: "common", name: "일반", border: "#9aa0a6", mult: 1, dots: 1 },
+    { id: "uncommon", name: "고급", border: "#3ddc84", mult: 2.4, dots: 2 },
+    { id: "rare", name: "희귀", border: "#4a9eff", mult: 5.8, dots: 3 },
+    { id: "epic", name: "영웅", border: "#b44aff", mult: 14, dots: 4 },
+    { id: "legendary", name: "전설", border: "#ffc83d", mult: 0, dots: 5 }
+  ];
+  var MAX_MERGE_TIER = 3;
+  var LEGENDARY_TIER = 4;
+
+  // src/js/core/grid.js
+  var { cols, rows, tile } = CONFIG.grid;
+  var WAYPOINTS = [
+    [-1, 1],
+    [9, 1],
+    [9, 4],
+    [2, 4],
+    [2, 6],
+    [cols, 6]
+  ];
+  function tileIndex(col, row) {
+    return row * cols + col;
+  }
+  function indexToTile(idx) {
+    return { col: idx % cols, row: Math.floor(idx / cols) };
+  }
+  function tileCenter(col, row) {
+    return { x: col * tile + tile / 2, y: row * tile + tile / 2 };
+  }
+  function pixelToTile(x, y) {
+    const col = Math.floor(x / tile);
+    const row = Math.floor(y / tile);
+    if (col < 0 || col >= cols || row < 0 || row >= rows) return null;
+    return { col, row };
+  }
+  var PATH_TILES = (() => {
+    const set = /* @__PURE__ */ new Set();
+    for (let i = 0; i < WAYPOINTS.length - 1; i++) {
+      const [c1, r1] = WAYPOINTS[i];
+      const [c2, r2] = WAYPOINTS[i + 1];
+      const dc = Math.sign(c2 - c1);
+      const dr = Math.sign(r2 - r1);
+      let c = c1;
+      let r = r1;
+      while (true) {
+        if (c >= 0 && c < cols && r >= 0 && r < rows) set.add(tileIndex(c, r));
+        if (c === c2 && r === r2) break;
+        c += dc;
+        r += dr;
+      }
+    }
+    return set;
+  })();
+  var PATH_POINTS = WAYPOINTS.map(([c, r]) => tileCenter(c, r));
+  var PATH_LENGTH = (() => {
+    let total = 0;
+    for (let i = 0; i < PATH_POINTS.length - 1; i++) {
+      total += Math.hypot(
+        PATH_POINTS[i + 1].x - PATH_POINTS[i].x,
+        PATH_POINTS[i + 1].y - PATH_POINTS[i].y
+      );
+    }
+    return total;
+  })();
+  function isBuildable(col, row) {
+    return !PATH_TILES.has(tileIndex(col, row));
+  }
+  var BUILDABLE_COUNT = cols * rows - PATH_TILES.size;
+
+  // src/js/data/legendary.js
+  var LEGENDARY_TOWERS = [
+    {
+      id: "storm_spire",
+      name: "폭풍의 첨탑",
+      recipe: ["archer", "volt", "frost"],
+      shape: "star",
+      color: "#ffe08a",
+      role: "범위 기절 (제어)",
+      // pulse = 투사체를 쏘지 않고 사거리 전체를 주기적으로 내리치는 방식
+      pulse: true,
+      damage: 90,
+      cooldown: 1.6,
+      range: 200,
+      stun: { duration: 1.1 },
+      desc: "주기적으로 사거리 안의 모든 적을 내리쳐 기절시킵니다. 적이 한곳에 묶이면서 뒤따라오는 적들이 쌓이고, 광역 타워가 한 번에 정리할 수 있게 됩니다."
+    },
+    {
+      id: "blaze_fort",
+      name: "작열 요새",
+      recipe: ["cannon", "volt", "archer"],
+      shape: "burst",
+      color: "#ff7a3d",
+      role: "대형 광역 (섬멸)",
+      damage: 300,
+      cooldown: 1.1,
+      range: 200,
+      projectileSpeed: 420,
+      splash: 85,
+      burn: { dps: 70, duration: 3 },
+      desc: "넓은 폭발과 함께 지면을 태워 지속 피해를 남깁니다. 기절로 뭉쳐둔 적을 한 번에 정리하는 주력 딜러입니다."
+    },
+    {
+      id: "glacier_wall",
+      name: "빙하 성벽",
+      recipe: ["cannon", "frost", "archer"],
+      shape: "shield",
+      color: "#9fe8ff",
+      role: "범위 둔화 (지연)",
+      damage: 150,
+      cooldown: 0.8,
+      range: 215,
+      projectileSpeed: 460,
+      splash: 70,
+      slow: { amount: 0.6, duration: 2.2 },
+      desc: "착탄 범위의 적을 크게 얼려 진격을 늦춥니다. 기절이 풀린 뒤에도 적이 흩어지지 않게 붙잡아 둡니다."
+    },
+    {
+      id: "void_prism",
+      name: "공허 프리즘",
+      recipe: ["cannon", "frost", "volt"],
+      shape: "prism",
+      color: "#c98bff",
+      role: "방어 무시 (대보스)",
+      damage: 230,
+      cooldown: 0.7,
+      range: 220,
+      projectileSpeed: 820,
+      chain: { count: 4, falloff: 0.85, radius: 140 },
+      pierceArmor: true,
+      desc: "적의 방어력을 완전히 무시하는 4연쇄 광선. 장갑형과 보스에게 특히 강합니다."
+    }
+  ];
+  function recipeKey(familyIds) {
+    return [...familyIds].sort().join("+");
+  }
+  var RECIPE_MAP = new Map(
+    LEGENDARY_TOWERS.map((t) => [recipeKey(t.recipe), t])
+  );
+  function findLegendary(familyIds) {
+    return RECIPE_MAP.get(recipeKey(familyIds)) || null;
+  }
+  function legendaryRecipeList(familyNameOf) {
+    return LEGENDARY_TOWERS.map(
+      (t) => `<b>${t.name}</b> (${t.role}) = ${t.recipe.map(familyNameOf).join(" + ")}`
+    );
+  }
+
+  // src/js/entities/Tower.js
+  var nextId = 1;
+  var Tower = class {
+    /**
+     * @param {number} tileIdx
+     * @param {{familyId?:string, tier?:number, legendaryId?:string}} opts
+     */
+    constructor(tileIdx, opts) {
+      this.uid = nextId++;
+      this.tileIdx = tileIdx;
+      const { col, row } = indexToTile(tileIdx);
+      const c = tileCenter(col, row);
+      this.x = c.x;
+      this.y = c.y;
+      this.cooldownTimer = 0;
+      this.spawnAnim = 1;
+      this.angle = -Math.PI / 2;
+      if (opts.legendaryId) {
+        const def = LEGENDARY_TOWERS.find((t) => t.id === opts.legendaryId);
+        this.isLegendary = true;
+        this.legendaryId = def.id;
+        this.familyId = null;
+        this.tier = LEGENDARY_TIER;
+        this.name = def.name;
+        this.shape = def.shape;
+        this.color = def.color;
+        this.role = def.role;
+        this.desc = def.desc;
+        this.damage = def.damage;
+        this.cooldown = def.cooldown;
+        this.range = def.range;
+        this.projectileSpeed = def.projectileSpeed ?? 0;
+        this.splash = def.splash || 0;
+        this.chain = def.chain || null;
+        this.slow = def.slow || null;
+        this.burn = def.burn || null;
+        this.stun = def.stun || null;
+        this.pulse = !!def.pulse;
+        this.pierceArmor = !!def.pierceArmor;
+      } else {
+        const fam = FAMILIES[opts.familyId];
+        const tier = opts.tier ?? 0;
+        const rar = RARITIES[tier];
+        this.isLegendary = false;
+        this.familyId = fam.id;
+        this.tier = tier;
+        this.name = `${rar.name} ${fam.name}`;
+        this.shape = fam.shape;
+        this.color = fam.color;
+        this.role = fam.role;
+        this.desc = fam.desc;
+        this.damage = Math.round(fam.damage * rar.mult);
+        this.cooldown = fam.cooldown * (1 - CONFIG.rarityBonus.cooldownPerTier * tier);
+        this.range = Math.round(
+          fam.range * (1 + CONFIG.rarityBonus.rangePerTier * tier)
+        );
+        this.projectileSpeed = fam.projectileSpeed;
+        this.splash = fam.splash || 0;
+        this.chain = fam.chain || null;
+        this.slow = fam.slow || null;
+        this.burn = null;
+        this.stun = null;
+        this.pulse = false;
+        this.pierceArmor = false;
+      }
+    }
+    get rarity() {
+      return RARITIES[this.tier];
+    }
+    /** 판매 환급액 */
+    get sellValue() {
+      const copies = this.isLegendary ? Math.pow(CONFIG.merge.required, 3) * CONFIG.merge.legendaryRequired : Math.pow(CONFIG.merge.required, this.tier);
+      return Math.round(
+        copies * CONFIG.economy.summonCost * CONFIG.economy.sellRatio
+      );
+    }
+    /** 같은 계열 + 같은 등급인지 (합성 재료 판정) */
+    matches(other) {
+      return !this.isLegendary && !other.isLegendary && this.familyId === other.familyId && this.tier === other.tier;
+    }
+  };
+
+  // src/js/systems/economy.js
+  function summonCost() {
+    return CONFIG.economy.summonCost;
+  }
+  function canAfford(amount) {
+    return state.gold >= amount;
+  }
+  function spend(amount) {
+    if (!canAfford(amount)) return false;
+    state.gold -= amount;
+    return true;
+  }
+  function earn(amount, x, y) {
+    state.gold += amount;
+    if (x !== void 0) addFloater(x, y, `+${amount}`, "#ffd23d");
+  }
+  function loseLife(amount) {
+    state.life = Math.max(0, state.life - amount);
+    showToast(`적이 통과했습니다! (-${amount})`, 1.2);
+    if (state.life <= 0) {
+      state.phase = "over";
+    }
+  }
+
+  // src/js/systems/summon.js
+  function canSummon(tileIdx) {
+    const { col, row } = indexToTile(tileIdx);
+    if (!isBuildable(col, row)) return { ok: false, reason: "경로 위에는 배치할 수 없습니다." };
+    if (state.towers.has(tileIdx)) return { ok: false, reason: "이미 타워가 있습니다." };
+    if (!canAfford(summonCost())) return { ok: false, reason: "골드가 부족합니다." };
+    return { ok: true };
+  }
+  function summonAt(tileIdx) {
+    const check = canSummon(tileIdx);
+    if (!check.ok) {
+      showToast(check.reason, 1.2);
+      return null;
+    }
+    spend(summonCost());
+    const familyId = FAMILY_IDS[Math.floor(Math.random() * FAMILY_IDS.length)];
+    const tower = new Tower(tileIdx, { familyId, tier: 0 });
+    state.towers.set(tileIdx, tower);
+    state.stats.summons++;
+    const { col, row } = indexToTile(tileIdx);
+    const c = tileCenter(col, row);
+    addEffect({ type: "ring", x: c.x, y: c.y, color: tower.color, radius: 34 });
+    return tower;
+  }
+
+  // src/js/render/shapes.js
+  function polygon(ctx2, x, y, radius, sides, rotation = -Math.PI / 2) {
+    ctx2.beginPath();
+    for (let i = 0; i < sides; i++) {
+      const a = rotation + i * Math.PI * 2 / sides;
+      const px = x + Math.cos(a) * radius;
+      const py = y + Math.sin(a) * radius;
+      i === 0 ? ctx2.moveTo(px, py) : ctx2.lineTo(px, py);
+    }
+    ctx2.closePath();
+  }
+  function starPath(ctx2, x, y, outer, inner, points, rotation = -Math.PI / 2) {
+    ctx2.beginPath();
+    for (let i = 0; i < points * 2; i++) {
+      const r = i % 2 === 0 ? outer : inner;
+      const a = rotation + i * Math.PI / points;
+      const px = x + Math.cos(a) * r;
+      const py = y + Math.sin(a) * r;
+      i === 0 ? ctx2.moveTo(px, py) : ctx2.lineTo(px, py);
+    }
+    ctx2.closePath();
+  }
+  function shieldPath(ctx2, x, y, r) {
+    ctx2.beginPath();
+    ctx2.moveTo(x, y - r);
+    ctx2.lineTo(x + r * 0.85, y - r * 0.5);
+    ctx2.lineTo(x + r * 0.7, y + r * 0.45);
+    ctx2.lineTo(x, y + r);
+    ctx2.lineTo(x - r * 0.7, y + r * 0.45);
+    ctx2.lineTo(x - r * 0.85, y - r * 0.5);
+    ctx2.closePath();
+  }
+  function prismPath(ctx2, x, y, r) {
+    ctx2.beginPath();
+    ctx2.moveTo(x, y - r);
+    ctx2.lineTo(x + r * 0.8, y - r * 0.35);
+    ctx2.lineTo(x + r * 0.55, y + r * 0.9);
+    ctx2.lineTo(x - r * 0.55, y + r * 0.9);
+    ctx2.lineTo(x - r * 0.8, y - r * 0.35);
+    ctx2.closePath();
+  }
+  function shapePath(ctx2, shape, x, y, r) {
+    switch (shape) {
+      case "circle":
+        ctx2.beginPath();
+        ctx2.arc(x, y, r, 0, Math.PI * 2);
+        break;
+      case "triangle":
+        polygon(ctx2, x, y, r * 1.15, 3);
+        break;
+      case "square":
+        polygon(ctx2, x, y, r * 1.08, 4, Math.PI / 4);
+        break;
+      case "diamond":
+        polygon(ctx2, x, y, r * 1.15, 4);
+        break;
+      case "pentagon":
+        polygon(ctx2, x, y, r, 5);
+        break;
+      case "hexagon":
+        polygon(ctx2, x, y, r, 6);
+        break;
+      case "star":
+        starPath(ctx2, x, y, r * 1.2, r * 0.5, 5);
+        break;
+      case "burst":
+        starPath(ctx2, x, y, r * 1.2, r * 0.62, 8);
+        break;
+      case "shield":
+        shieldPath(ctx2, x, y, r * 1.1);
+        break;
+      case "prism":
+        prismPath(ctx2, x, y, r * 1.1);
+        break;
+      default:
+        ctx2.beginPath();
+        ctx2.arc(x, y, r, 0, Math.PI * 2);
+    }
+  }
+  function drawTower(ctx2, tower, selected) {
+    const scale = 1 + tower.spawnAnim * 0.35;
+    const r = 20 * scale;
+    const rar = tower.rarity;
+    ctx2.save();
+    if (tower.isLegendary) {
+      ctx2.shadowColor = rar.border;
+      ctx2.shadowBlur = 16;
+    }
+    shapePath(ctx2, tower.shape, tower.x, tower.y, r);
+    ctx2.fillStyle = tower.color;
+    ctx2.fill();
+    ctx2.lineWidth = tower.isLegendary ? 4 : 3;
+    ctx2.strokeStyle = rar.border;
+    ctx2.stroke();
+    ctx2.restore();
+    ctx2.save();
+    ctx2.translate(tower.x, tower.y);
+    ctx2.rotate(tower.angle);
+    ctx2.fillStyle = "rgba(0,0,0,0.45)";
+    ctx2.fillRect(r * 0.4, -3, r * 0.75, 6);
+    ctx2.restore();
+    ctx2.save();
+    ctx2.fillStyle = rar.border;
+    if (tower.isLegendary) {
+      ctx2.font = "bold 11px sans-serif";
+      ctx2.textAlign = "center";
+      ctx2.fillText("★", tower.x, tower.y + r + 11);
+    } else {
+      const n = rar.dots;
+      const gap = 6;
+      const startX = tower.x - (n - 1) * gap / 2;
+      for (let i = 0; i < n; i++) {
+        ctx2.beginPath();
+        ctx2.arc(startX + i * gap, tower.y + r + 6, 2.2, 0, Math.PI * 2);
+        ctx2.fill();
+      }
+    }
+    ctx2.restore();
+    if (selected) {
+      ctx2.save();
+      ctx2.strokeStyle = "#ffffff";
+      ctx2.lineWidth = 2;
+      ctx2.setLineDash([5, 4]);
+      ctx2.beginPath();
+      ctx2.arc(tower.x, tower.y, r + 8, 0, Math.PI * 2);
+      ctx2.stroke();
+      ctx2.restore();
+    }
+  }
+  function drawEnemy(ctx2, enemy) {
+    const r = enemy.radius;
+    ctx2.save();
+    shapePath(ctx2, enemy.shape, enemy.x, enemy.y, r);
+    ctx2.fillStyle = enemy.flash > 0 ? "#ffffff" : enemy.color;
+    ctx2.fill();
+    ctx2.lineWidth = enemy.isBoss ? 3 : 1.5;
+    ctx2.strokeStyle = enemy.isMission ? "#ffffff" : enemy.isBoss ? "#ffd23d" : "rgba(0,0,0,0.5)";
+    ctx2.stroke();
+    ctx2.restore();
+    if (enemy.stun) {
+      ctx2.save();
+      ctx2.strokeStyle = "rgba(255,210,61,0.95)";
+      ctx2.lineWidth = 3;
+      ctx2.setLineDash([4, 3]);
+      ctx2.beginPath();
+      ctx2.arc(enemy.x, enemy.y, r + 7, 0, Math.PI * 2);
+      ctx2.stroke();
+      ctx2.restore();
+      ctx2.save();
+      ctx2.fillStyle = "#ffd23d";
+      ctx2.font = "bold 11px sans-serif";
+      ctx2.textAlign = "center";
+      ctx2.fillText("✳", enemy.x, enemy.y - r - 14);
+      ctx2.restore();
+    }
+    if (enemy.slow) {
+      ctx2.save();
+      ctx2.strokeStyle = "rgba(94,203,255,0.9)";
+      ctx2.lineWidth = 2;
+      ctx2.beginPath();
+      ctx2.arc(enemy.x, enemy.y, r + 4, 0, Math.PI * 2);
+      ctx2.stroke();
+      ctx2.restore();
+    }
+    if (enemy.burn) {
+      ctx2.save();
+      ctx2.fillStyle = "rgba(255,122,61,0.8)";
+      ctx2.beginPath();
+      ctx2.arc(enemy.x + r, enemy.y - r, 3, 0, Math.PI * 2);
+      ctx2.fill();
+      ctx2.restore();
+    }
+    if (enemy.isMission) {
+      ctx2.save();
+      ctx2.font = "bold 10px sans-serif";
+      ctx2.textAlign = "center";
+      ctx2.fillStyle = enemy.color;
+      ctx2.fillText(enemy.name, enemy.x, enemy.y + r + 14);
+      ctx2.restore();
+    }
+    const w = Math.max(22, r * 2);
+    const ratio = Math.max(0, enemy.hp / enemy.maxHp);
+    ctx2.fillStyle = "rgba(0,0,0,0.55)";
+    ctx2.fillRect(enemy.x - w / 2, enemy.y - r - 10, w, 4);
+    ctx2.fillStyle = ratio > 0.5 ? "#5ddc7a" : ratio > 0.25 ? "#ffd23d" : "#ff5c5c";
+    ctx2.fillRect(enemy.x - w / 2, enemy.y - r - 10, w * ratio, 4);
+  }
+
+  // src/js/render/renderer.js
+  var { cols: cols2, rows: rows2, tile: tile2 } = CONFIG.grid;
+  var hoverTile = null;
+  function setHoverTile(t) {
+    hoverTile = t;
+  }
+  function drawBoard(ctx2) {
+    ctx2.fillStyle = "#12161f";
+    ctx2.fillRect(0, 0, CONFIG.canvas.width, CONFIG.canvas.height);
+    for (let r = 0; r < rows2; r++) {
+      for (let c = 0; c < cols2; c++) {
+        const x = c * tile2;
+        const y = r * tile2;
+        const onPath = PATH_TILES.has(tileIndex(c, r));
+        ctx2.fillStyle = onPath ? "#2a2f3d" : (c + r) % 2 === 0 ? "#1a1f2b" : "#171c26";
+        ctx2.fillRect(x, y, tile2, tile2);
+        ctx2.strokeStyle = "rgba(255,255,255,0.04)";
+        ctx2.strokeRect(x + 0.5, y + 0.5, tile2 - 1, tile2 - 1);
+      }
+    }
+    ctx2.save();
+    ctx2.strokeStyle = "rgba(120,140,180,0.35)";
+    ctx2.lineWidth = 26;
+    ctx2.lineCap = "round";
+    ctx2.lineJoin = "round";
+    ctx2.beginPath();
+    PATH_POINTS.forEach((p, i) => i === 0 ? ctx2.moveTo(p.x, p.y) : ctx2.lineTo(p.x, p.y));
+    ctx2.stroke();
+    ctx2.restore();
+    ctx2.save();
+    ctx2.font = "bold 12px sans-serif";
+    ctx2.fillStyle = "#8fa3c0";
+    ctx2.fillText("START", 4, PATH_POINTS[0].y - 22);
+    ctx2.textAlign = "right";
+    ctx2.fillText("GOAL", CONFIG.canvas.width - 4, PATH_POINTS[PATH_POINTS.length - 1].y - 22);
+    ctx2.restore();
+    if (hoverTile && isBuildable(hoverTile.col, hoverTile.row)) {
+      const occupied = state.towers.has(tileIndex(hoverTile.col, hoverTile.row));
+      ctx2.save();
+      ctx2.strokeStyle = occupied ? "rgba(255,255,255,0.35)" : "rgba(93,220,132,0.8)";
+      ctx2.lineWidth = 2;
+      ctx2.strokeRect(hoverTile.col * tile2 + 2, hoverTile.row * tile2 + 2, tile2 - 4, tile2 - 4);
+      ctx2.restore();
+    }
+  }
+  function drawRanges(ctx2) {
+    for (const t of selectedTowers()) {
+      ctx2.save();
+      ctx2.fillStyle = "rgba(120,180,255,0.07)";
+      ctx2.strokeStyle = "rgba(120,180,255,0.5)";
+      ctx2.lineWidth = 1.5;
+      ctx2.beginPath();
+      ctx2.arc(t.x, t.y, t.range, 0, Math.PI * 2);
+      ctx2.fill();
+      ctx2.stroke();
+      ctx2.restore();
+    }
+  }
+  function drawProjectiles(ctx2) {
+    for (const p of state.projectiles) {
+      ctx2.save();
+      ctx2.fillStyle = p.color;
+      ctx2.shadowColor = p.color;
+      ctx2.shadowBlur = 8;
+      ctx2.beginPath();
+      ctx2.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx2.fill();
+      ctx2.restore();
+    }
+  }
+  function drawEffects(ctx2) {
+    for (const e of state.effects) {
+      const a = Math.max(0, e.life / e.maxLife);
+      ctx2.save();
+      ctx2.globalAlpha = a;
+      if (e.type === "ring" || e.type === "burst") {
+        ctx2.strokeStyle = e.color;
+        ctx2.lineWidth = e.type === "burst" ? 4 : 2;
+        ctx2.beginPath();
+        ctx2.arc(e.x, e.y, e.radius * (1.15 - a * 0.55), 0, Math.PI * 2);
+        ctx2.stroke();
+      } else if (e.type === "beam") {
+        ctx2.strokeStyle = e.color;
+        ctx2.lineWidth = 3;
+        ctx2.shadowColor = e.color;
+        ctx2.shadowBlur = 10;
+        ctx2.beginPath();
+        ctx2.moveTo(e.x1, e.y1);
+        ctx2.lineTo(e.x2, e.y2);
+        ctx2.stroke();
+      }
+      ctx2.restore();
+    }
+  }
+  function drawFloaters(ctx2) {
+    ctx2.save();
+    ctx2.font = "bold 13px sans-serif";
+    ctx2.textAlign = "center";
+    for (const f of state.floaters) {
+      ctx2.globalAlpha = Math.max(0, f.life);
+      ctx2.fillStyle = f.color;
+      ctx2.fillText(f.text, f.x, f.y);
+    }
+    ctx2.restore();
+  }
+  function drawOverlay(ctx2) {
+    if (state.phase === "over" || state.phase === "clear") {
+      ctx2.save();
+      ctx2.fillStyle = "rgba(8,10,16,0.82)";
+      ctx2.fillRect(0, 0, CONFIG.canvas.width, CONFIG.canvas.height);
+      ctx2.textAlign = "center";
+      const cx = CONFIG.canvas.width / 2;
+      const cy = CONFIG.canvas.height / 2;
+      ctx2.fillStyle = state.phase === "clear" ? "#ffc83d" : "#ff5c5c";
+      ctx2.font = "bold 40px sans-serif";
+      ctx2.fillText(state.phase === "clear" ? "GAME CLEAR!" : "GAME OVER", cx, cy - 18);
+      ctx2.fillStyle = "#c9d3e4";
+      ctx2.font = "15px sans-serif";
+      ctx2.fillText(
+        `도달 라운드 ${state.wave} · 처치 ${state.stats.killed} · 합성 ${state.stats.merges} · 전설 ${state.stats.legendaries}`,
+        cx,
+        cy + 16
+      );
+      ctx2.fillStyle = "#7f8ca3";
+      ctx2.font = "13px sans-serif";
+      ctx2.fillText("다시 시작하려면 아래 [재시작] 버튼을 누르세요", cx, cy + 44);
+      ctx2.restore();
+    }
+    if (state.toast.timer > 0) {
+      ctx2.save();
+      ctx2.globalAlpha = Math.min(1, state.toast.timer * 2);
+      ctx2.font = "bold 15px sans-serif";
+      ctx2.textAlign = "center";
+      const w = ctx2.measureText(state.toast.text).width + 28;
+      const x = CONFIG.canvas.width / 2;
+      ctx2.fillStyle = "rgba(10,13,20,0.85)";
+      ctx2.fillRect(x - w / 2, 12, w, 30);
+      ctx2.strokeStyle = "rgba(255,255,255,0.15)";
+      ctx2.strokeRect(x - w / 2, 12, w, 30);
+      ctx2.fillStyle = "#e8eefc";
+      ctx2.fillText(state.toast.text, x, 32);
+      ctx2.restore();
+    }
+  }
+  function render(ctx2) {
+    drawBoard(ctx2);
+    drawRanges(ctx2);
+    for (const t of state.towers.values()) {
+      drawTower(ctx2, t, state.selection.includes(t.tileIdx));
+    }
+    for (const e of state.enemies) drawEnemy(ctx2, e);
+    drawProjectiles(ctx2);
+    drawEffects(ctx2);
+    drawFloaters(ctx2);
+    drawOverlay(ctx2);
+  }
+
+  // src/js/core/input.js
+  function canvasPos(canvas2, evt) {
+    const rect = canvas2.getBoundingClientRect();
+    const scaleX = CONFIG.canvas.width / rect.width;
+    const scaleY = CONFIG.canvas.height / rect.height;
+    return {
+      x: (evt.clientX - rect.left) * scaleX,
+      y: (evt.clientY - rect.top) * scaleY
+    };
+  }
+  function handleTowerClick(idx) {
+    const tower = state.towers.get(idx);
+    if (!tower) return;
+    if (state.selection.includes(idx)) {
+      state.selection = state.selection.filter((i) => i !== idx);
+      return;
+    }
+    const selected = state.selection.map((i) => state.towers.get(i)).filter(Boolean);
+    const isEpic = (t) => !t.isLegendary && t.tier === MAX_MERGE_TIER;
+    if (selected.length > 0 && selected.every(isEpic) && isEpic(tower) && selected.length < CONFIG.merge.legendaryRequired) {
+      state.selection.push(idx);
+      return;
+    }
+    state.selection = [idx];
+  }
+  function bindInput(canvas2) {
+    canvas2.addEventListener("mousemove", (evt) => {
+      const { x, y } = canvasPos(canvas2, evt);
+      setHoverTile(pixelToTile(x, y));
+    });
+    canvas2.addEventListener("mouseleave", () => setHoverTile(null));
+    canvas2.addEventListener("click", (evt) => {
+      if (state.phase === "over" || state.phase === "clear") return;
+      const { x, y } = canvasPos(canvas2, evt);
+      const t = pixelToTile(x, y);
+      if (!t) return;
+      const idx = tileIndex(t.col, t.row);
+      if (state.towers.has(idx)) {
+        handleTowerClick(idx);
+        return;
+      }
+      if (!isBuildable(t.col, t.row)) {
+        clearSelection();
+        return;
+      }
+      const tower = summonAt(idx);
+      state.selection = tower ? [idx] : [];
+    });
+    window.addEventListener("keydown", (evt) => {
+      if (evt.key === "Escape") clearSelection();
+    });
+  }
+
+  // src/js/systems/merge.js
+  function findMaterials(base) {
+    if (!base || base.isLegendary || base.tier >= MAX_MERGE_TIER) return [];
+    const list = [];
+    for (const tower of state.towers.values()) {
+      if (tower.uid === base.uid) continue;
+      if (base.matches(tower)) list.push(tower);
+    }
+    list.sort(
+      (a, b) => Math.hypot(a.x - base.x, a.y - base.y) - Math.hypot(b.x - base.x, b.y - base.y)
+    );
+    return list;
+  }
+  function requiredFor(baseTier, targetTier) {
+    return Math.pow(CONFIG.merge.required, targetTier - baseTier);
+  }
+  function mergeOptions(base) {
+    if (!base || base.isLegendary || base.tier >= MAX_MERGE_TIER) return [];
+    const have = findMaterials(base).length + 1;
+    const out = [];
+    for (let target = base.tier + 1; target <= MAX_MERGE_TIER; target++) {
+      const need = requiredFor(base.tier, target);
+      out.push({
+        targetTier: target,
+        name: RARITIES[target].name,
+        color: RARITIES[target].border,
+        need,
+        have: Math.min(have, need),
+        ok: have >= need
+      });
+    }
+    return out;
+  }
+  function mergeStatus(base) {
+    if (!base) return null;
+    if (base.isLegendary) {
+      return { kind: "legendary-final", text: "전설은 최종 등급입니다." };
+    }
+    if (base.tier >= MAX_MERGE_TIER) {
+      return { kind: "epic", text: "영웅 2개를 더 선택해 전설을 조합하세요." };
+    }
+    return { kind: "normal", options: mergeOptions(base) };
+  }
+  function mergeTo(base, targetTier) {
+    const opt = mergeOptions(base).find((o) => o.targetTier === targetTier);
+    if (!opt || !opt.ok) {
+      showToast("합성할 재료가 부족합니다.", 1.2);
+      return null;
+    }
+    const materials = findMaterials(base).slice(0, opt.need - 1);
+    for (const m of materials) {
+      addEffect({
+        type: "beam",
+        x1: m.x,
+        y1: m.y,
+        x2: base.x,
+        y2: base.y,
+        color: base.color
+      });
+      state.towers.delete(m.tileIdx);
+    }
+    const upgraded = new Tower(base.tileIdx, {
+      familyId: base.familyId,
+      tier: targetTier
+    });
+    state.towers.set(base.tileIdx, upgraded);
+    state.stats.merges++;
+    addEffect({
+      type: "burst",
+      x: upgraded.x,
+      y: upgraded.y,
+      color: upgraded.rarity.border,
+      radius: 40 + targetTier * 10,
+      life: 0.45
+    });
+    addFloater(upgraded.x, upgraded.y - 12, `${upgraded.rarity.name}!`, upgraded.rarity.border);
+    state.selection = [upgraded.tileIdx];
+    return upgraded;
+  }
+  function legendaryStatus(towers) {
+    const need = CONFIG.merge.legendaryRequired;
+    const allEpic = towers.length > 0 && towers.every((t) => !t.isLegendary && t.tier === MAX_MERGE_TIER);
+    if (!allEpic) return null;
+    if (towers.length < need) {
+      return {
+        ok: false,
+        have: towers.length,
+        need,
+        text: `전설 조합 (${towers.length}/${need})`
+      };
+    }
+    const found = findLegendary(towers.map((t) => t.familyId));
+    return {
+      ok: !!found,
+      have: need,
+      need,
+      target: found,
+      text: found ? `전설 합성 — ${found.name}` : "조합표에 없는 조합입니다"
+    };
+  }
+  function mergeLegendary(towers) {
+    const status = legendaryStatus(towers);
+    if (!status || !status.ok) {
+      showToast("조합에 맞는 전설 타워가 없습니다.", 1.5);
+      return null;
+    }
+    const base = towers[0];
+    for (const t of towers.slice(1)) {
+      addEffect({ type: "beam", x1: t.x, y1: t.y, x2: base.x, y2: base.y, color: "#ffc83d" });
+      state.towers.delete(t.tileIdx);
+    }
+    const legend = new Tower(base.tileIdx, { legendaryId: status.target.id });
+    state.towers.set(base.tileIdx, legend);
+    state.stats.merges++;
+    state.stats.legendaries++;
+    addEffect({ type: "burst", x: legend.x, y: legend.y, color: "#ffc83d", radius: 70, life: 0.6 });
+    addFloater(legend.x, legend.y - 16, `★ ${legend.name}`, "#ffc83d");
+    showToast(`전설 타워 [${legend.name}] 완성!`, 2.5);
+    clearSelection();
+    state.selection = [legend.tileIdx];
+    return legend;
+  }
+  function familyName(id) {
+    return FAMILIES[id]?.name ?? id;
+  }
+
+  // src/js/systems/upgrade.js
+  function upgradeDef(tier) {
+    return CONFIG.upgrade.tiers.find((u) => u.tier === tier);
+  }
+  function upgradeLevel(tier) {
+    return state.upgrades[tier] ?? 0;
+  }
+  function upgradeCost(tier) {
+    const def = upgradeDef(tier);
+    const lv = upgradeLevel(tier);
+    if (lv >= def.maxLevel) return null;
+    return def.costBase * (lv + 1);
+  }
+  function upgradeMultiplier(tier) {
+    return 1 + upgradeLevel(tier) * CONFIG.upgrade.damagePerLevel;
+  }
+  function towerDamage(tower) {
+    return tower.damage * upgradeMultiplier(tower.tier);
+  }
+  function buyUpgrade(tier) {
+    const def = upgradeDef(tier);
+    const cost = upgradeCost(tier);
+    if (cost === null) {
+      showToast(`${RARITIES[tier].name} 강화는 이미 최대입니다.`, 1.2);
+      return false;
+    }
+    if (!spend(cost)) {
+      showToast(`골드가 부족합니다. (${cost}G 필요)`, 1.2);
+      return false;
+    }
+    state.upgrades[tier] = upgradeLevel(tier) + 1;
+    state.stats.upgrades++;
+    const pct = Math.round(upgradeLevel(tier) * CONFIG.upgrade.damagePerLevel * 100);
+    showToast(
+      `${RARITIES[tier].name} 강화 Lv.${state.upgrades[tier]}/${def.maxLevel} — 공격력 +${pct}%`,
+      1.4
+    );
+    return true;
+  }
+  function upgradeSummary() {
+    return CONFIG.upgrade.tiers.map((def) => {
+      const lv = upgradeLevel(def.tier);
+      const cost = upgradeCost(def.tier);
+      return {
+        tier: def.tier,
+        name: RARITIES[def.tier].name,
+        color: RARITIES[def.tier].border,
+        level: lv,
+        maxLevel: def.maxLevel,
+        cost,
+        maxed: cost === null,
+        bonusPercent: Math.round(lv * CONFIG.upgrade.damagePerLevel * 100),
+        affordable: cost !== null && state.gold >= cost
+      };
+    });
+  }
+
+  // src/js/data/waves.js
+  function waveComposition(n) {
+    const groups = [];
+    if (isBossWave(n)) {
+      const bossCount = CONFIG.wave.bossCount[n] ?? Math.floor(n / CONFIG.wave.bossInterval);
+      groups.push({ type: "armor", count: 4 + Math.floor(n / 4), gap: 0.26 });
+      groups.push({ type: "boss", count: bossCount, gap: 1.1 });
+      return groups;
+    }
+    const base = 6 + Math.round(n * 1.05);
+    if (n <= 4) {
+      groups.push({ type: "grunt", count: base, gap: 0.62 });
+    } else if (n <= 9) {
+      groups.push({ type: "grunt", count: Math.round(base * 0.6), gap: 0.45 });
+      groups.push({ type: "swift", count: Math.round(base * 0.4), gap: 0.26 });
+    } else {
+      groups.push({ type: "grunt", count: Math.round(base * 0.45), gap: 0.26 });
+      groups.push({ type: "swift", count: Math.round(base * 0.3), gap: 0.24 });
+      groups.push({ type: "armor", count: Math.round(base * 0.25), gap: 0.45 });
+    }
+    return groups;
+  }
+  function hpScale(n, isBoss = false) {
+    if (isBoss) return Math.pow(CONFIG.wave.bossHpGrowth, n - 1);
+    const soft = CONFIG.wave.earlySoftWaves;
+    if (n <= soft) return Math.pow(CONFIG.wave.earlyGrowth, n - 1);
+    return Math.pow(CONFIG.wave.earlyGrowth, soft - 1) * Math.pow(CONFIG.wave.hpGrowth, n - soft);
+  }
+  function rewardScale(n) {
+    return Math.pow(CONFIG.wave.rewardGrowth, n - 1);
+  }
+  function clearBonus(n) {
+    return CONFIG.economy.waveBonusBase + n * CONFIG.economy.waveBonusPerWave;
+  }
+  function isBossWave(n) {
+    return n % CONFIG.wave.bossInterval === 0;
+  }
+
+  // src/js/data/enemies.js
+  var ENEMIES = {
+    grunt: {
+      id: "grunt",
+      name: "일반형",
+      shape: "circle",
+      color: "#ff5c5c",
+      hp: 40,
+      speed: 85,
+      armor: 0,
+      reward: 8,
+      radius: 12
+    },
+    swift: {
+      id: "swift",
+      name: "고속형",
+      shape: "triangle",
+      color: "#ffd23d",
+      hp: 24,
+      speed: 165,
+      armor: 0,
+      reward: 10,
+      radius: 10
+    },
+    armor: {
+      id: "armor",
+      name: "장갑형",
+      shape: "hexagon",
+      color: "#7f9bb5",
+      hp: 78,
+      speed: 61,
+      armor: 5,
+      reward: 14,
+      radius: 14,
+      stunResist: 0.25
+    },
+    boss: {
+      id: "boss",
+      name: "보스",
+      shape: "hexagon",
+      color: "#c81e4a",
+      hp: 560,
+      speed: 54,
+      armor: 8,
+      reward: 120,
+      radius: 22,
+      isBoss: true,
+      stunResist: 0.55
+    },
+    // --- 미션 전용 적 (좌측 미션 패널에서 직접 소환) ---
+    // 라이프를 깎지 않습니다. 놓치면 미션만 실패하고 다시 도전할 수 있습니다.
+    midboss: {
+      id: "midboss",
+      name: "중간 보스",
+      shape: "diamond",
+      color: "#4fd1a5",
+      hp: 420,
+      speed: 62,
+      armor: 4,
+      reward: 40,
+      radius: 19,
+      isBoss: true,
+      isMission: true,
+      stunResist: 0.35
+    },
+    elite: {
+      id: "elite",
+      name: "엘리트",
+      shape: "star",
+      color: "#ff8ad8",
+      hp: 900,
+      speed: 78,
+      armor: 10,
+      reward: 90,
+      radius: 21,
+      isBoss: true,
+      isMission: true,
+      stunResist: 0.5
+    },
+    gatekeeper: {
+      id: "gatekeeper",
+      name: "문지기",
+      shape: "shield",
+      color: "#b0a24a",
+      hp: 2e3,
+      speed: 46,
+      armor: 20,
+      reward: 160,
+      radius: 25,
+      isBoss: true,
+      isMission: true,
+      stunResist: 0.65
+    }
+  };
+
+  // src/js/entities/Enemy.js
+  var Enemy = class {
+    /**
+     * @param {string} typeId enemies.js의 키
+     * @param {number} hpMult 웨이브 체력 배율
+     * @param {number} rewardMult 웨이브 보상 배율
+     * @param {string|null} missionId 미션으로 소환된 경우 미션 id
+     */
+    constructor(typeId, hpMult, rewardMult, missionId = null) {
+      const def = ENEMIES[typeId];
+      this.def = def;
+      this.typeId = typeId;
+      this.name = def.name;
+      this.shape = def.shape;
+      this.color = def.color;
+      this.radius = def.radius;
+      this.armor = def.armor;
+      this.isBoss = !!def.isBoss;
+      this.isMission = !!def.isMission;
+      this.missionId = missionId;
+      this.stunResist = def.stunResist ?? 0;
+      this.maxHp = Math.round(def.hp * hpMult);
+      this.hp = this.maxHp;
+      this.reward = Math.round(def.reward * rewardMult);
+      this.baseSpeed = def.speed;
+      this.segment = 0;
+      this.x = PATH_POINTS[0].x;
+      this.y = PATH_POINTS[0].y;
+      this.traveled = 0;
+      this.slow = null;
+      this.burn = null;
+      this.stun = null;
+      this.flash = 0;
+      this.dead = false;
+      this.escaped = false;
+    }
+    get speed() {
+      if (this.stun) return 0;
+      const mult = this.slow ? 1 - this.slow.amount : 1;
+      return this.baseSpeed * mult;
+    }
+    takeDamage(amount, opts = {}) {
+      const armor = opts.pierceArmor ? 0 : this.armor;
+      const dmg = Math.max(1, Math.round(amount - armor));
+      this.hp -= dmg;
+      this.flash = 0.08;
+      if (this.hp <= 0) this.dead = true;
+      return dmg;
+    }
+    applySlow(amount, duration) {
+      if (!this.slow || amount >= this.slow.amount) {
+        this.slow = { amount, timer: duration };
+      } else {
+        this.slow.timer = Math.max(this.slow.timer, duration);
+      }
+    }
+    applyBurn(dps, duration) {
+      this.burn = { dps, timer: duration };
+    }
+    /** 기절 — 저항 비율만큼 지속시간이 줄어듭니다 */
+    applyStun(duration) {
+      const actual = duration * (1 - this.stunResist);
+      if (actual <= 0) return;
+      if (!this.stun || actual > this.stun.timer) this.stun = { timer: actual };
+    }
+    update(dt) {
+      if (this.flash > 0) this.flash -= dt;
+      if (this.slow) {
+        this.slow.timer -= dt;
+        if (this.slow.timer <= 0) this.slow = null;
+      }
+      if (this.stun) {
+        this.stun.timer -= dt;
+        if (this.stun.timer <= 0) this.stun = null;
+      }
+      if (this.burn) {
+        this.burn.timer -= dt;
+        this.hp -= this.burn.dps * dt;
+        if (this.hp <= 0) this.dead = true;
+        if (this.burn.timer <= 0) this.burn = null;
+      }
+      let move = this.speed * dt;
+      while (move > 0 && this.segment < PATH_POINTS.length - 1) {
+        const target = PATH_POINTS[this.segment + 1];
+        const dx = target.x - this.x;
+        const dy = target.y - this.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist <= move) {
+          this.x = target.x;
+          this.y = target.y;
+          this.traveled += dist;
+          move -= dist;
+          this.segment++;
+        } else {
+          this.x += dx / dist * move;
+          this.y += dy / dist * move;
+          this.traveled += move;
+          move = 0;
+        }
+      }
+      if (this.segment >= PATH_POINTS.length - 1) {
+        this.escaped = true;
+      }
+    }
+  };
+
+  // src/js/systems/mission.js
+  function missionDef(id) {
+    return MISSIONS.find((m) => m.id === id);
+  }
+  function refreshMissions(wave) {
+    for (const def of MISSIONS) {
+      const st = state.missions[def.id];
+      if (def.repeatable) {
+        if (isUnlockedAt(def, wave) && st.status !== "active") {
+          st.status = "ready";
+          st.unlockedWave = wave;
+          showToast(`미션 개방 — ${def.name}`, 1.6);
+        }
+        continue;
+      }
+      if (st.status === "locked" && isUnlockedAt(def, wave)) {
+        st.status = "ready";
+        st.unlockedWave = wave;
+        showToast(`미션 개방 — ${def.name}`, 1.8);
+      }
+    }
+  }
+  function canStart(id) {
+    return state.missions[id]?.status === "ready" && (state.phase === "prep" || state.phase === "combat");
+  }
+  function startMission(id) {
+    const def = missionDef(id);
+    const st = state.missions[id];
+    if (!canStart(id)) {
+      showToast("지금은 도전할 수 없는 미션입니다.", 1.2);
+      return false;
+    }
+    const wave = Math.max(1, state.wave);
+    const enemy = new Enemy(def.enemy, hpScale(wave, true), rewardScale(wave), id);
+    state.enemies.push(enemy);
+    st.status = "active";
+    showToast(`${def.name} 시작! ${def.icon} ${enemy.name} 등장`, 2);
+    return true;
+  }
+  function onMissionEnemyKilled(enemy) {
+    const def = missionDef(enemy.missionId);
+    const st = state.missions[enemy.missionId];
+    if (!def || !st) return;
+    const reward = missionReward(def, st.unlockedWave || state.wave);
+    earn(reward);
+    addFloater(enemy.x, enemy.y - 20, `미션 성공 +${reward}G`, "#4fd1a5");
+    addEffect({ type: "burst", x: enemy.x, y: enemy.y, color: "#4fd1a5", radius: 70, life: 0.6 });
+    showToast(`${def.name} 성공! +${reward}G`, 2.2);
+    st.clears++;
+    state.stats.missions++;
+    st.status = def.repeatable ? "locked" : "done";
+  }
+  function onMissionEnemyEscaped(enemy) {
+    const def = missionDef(enemy.missionId);
+    const st = state.missions[enemy.missionId];
+    if (!def || !st) return;
+    showToast(`${def.name} 실패 — 다시 도전할 수 있습니다.`, 2);
+    st.status = "ready";
+  }
+  function missionSummary() {
+    return MISSIONS.map((def) => {
+      const st = state.missions[def.id];
+      const wave = st.unlockedWave || state.wave;
+      let statusText;
+      if (st.status === "ready") statusText = "도전 가능";
+      else if (st.status === "active") statusText = "진행 중";
+      else if (st.status === "done") statusText = "완료";
+      else statusText = def.repeatable ? `${def.every}라운드마다 개방` : `${def.at}라운드 개방`;
+      return {
+        id: def.id,
+        icon: def.icon,
+        name: def.name,
+        hint: def.hint,
+        desc: def.desc,
+        status: st.status,
+        statusText,
+        clears: st.clears,
+        reward: missionReward(def, wave),
+        canStart: canStart(def.id)
+      };
+    });
+  }
+
+  // src/js/render/hud.js
+  var el = {};
+  var handlers = { merge: null, mission: null, upgrade: null };
+  function initHud(callbacks = {}) {
+    Object.assign(handlers, callbacks);
+    [
+      "gold",
+      "life",
+      "wave",
+      "waveMax",
+      "btnWave",
+      "btnSpeed",
+      "btnLegend",
+      "btnSell",
+      "btnRestart",
+      "selTitle",
+      "selBadge",
+      "selStats",
+      "selDesc",
+      "recipeList",
+      "statLine",
+      "mergeButtons",
+      "missionList",
+      "upgradeList"
+    ].forEach((id) => el[id] = document.getElementById(id));
+    el.waveMax.textContent = CONFIG.wave.finalWave;
+    el.recipeList.innerHTML = legendaryRecipeList(familyName).map((t) => `<li>${t}</li>`).join("");
+    el.missionList.addEventListener("click", (evt) => {
+      const btn = evt.target.closest("button[data-mission]");
+      if (btn && !btn.disabled) handlers.mission?.(btn.dataset.mission);
+    });
+    el.upgradeList.addEventListener("click", (evt) => {
+      const btn = evt.target.closest("button[data-upgrade]");
+      if (btn && !btn.disabled) handlers.upgrade?.(Number(btn.dataset.upgrade));
+    });
+    el.mergeButtons.addEventListener("click", (evt) => {
+      const btn = evt.target.closest("button[data-target-tier]");
+      if (btn && !btn.disabled) handlers.merge?.(Number(btn.dataset.targetTier));
+    });
+  }
+  function setBtn(button, { text, enabled, hidden = false }) {
+    button.hidden = hidden;
+    button.textContent = text;
+    button.disabled = !enabled;
+  }
+  function setHtml(node, html) {
+    if (node._lastHtml !== html) {
+      node.innerHTML = html;
+      node._lastHtml = html;
+    }
+  }
+  function renderMissions() {
+    const html = missionSummary().map((m) => {
+      const label = m.status === "active" ? "진행 중…" : m.status === "done" ? "완료" : m.canStart ? `도전 (보상 ${m.reward}G)` : "잠김";
+      return `
+        <div class="card ${m.status}">
+          <div class="card-top">
+            <span class="card-name">${m.icon} ${m.name}</span>
+            <span class="card-tag">${m.statusText}</span>
+          </div>
+          <div class="card-meta">${m.hint}${m.clears > 0 ? ` · 클리어 <b>${m.clears}</b>회` : ""}</div>
+          <button class="card-btn" data-mission="${m.id}" ${m.canStart ? "" : "disabled"}>${label}</button>
+        </div>`;
+    }).join("");
+    setHtml(el.missionList, html);
+  }
+  function renderUpgrades() {
+    const html = upgradeSummary().map((u) => {
+      const pct = u.level / u.maxLevel * 100;
+      const label = u.maxed ? "최대 강화 완료" : `강화 (${u.cost}G)`;
+      return `
+        <div class="card">
+          <div class="card-top">
+            <span class="card-name" style="color:${u.color}">${u.name} 강화</span>
+            <span class="card-tag">Lv.${u.level}/${u.maxLevel}</span>
+          </div>
+          <div class="card-meta">공격력 <b>+${u.bonusPercent}%</b></div>
+          <div class="bar"><i style="width:${pct}%;background:${u.color}"></i></div>
+          <button class="card-btn" data-upgrade="${u.tier}" ${u.maxed || !u.affordable ? "disabled" : ""}>${label}</button>
+        </div>`;
+    }).join("");
+    setHtml(el.upgradeList, html);
+  }
+  function renderMergeButtons(base) {
+    if (!base) return setHtml(el.mergeButtons, "");
+    const ms = mergeStatus(base);
+    if (!ms || ms.kind !== "normal") return setHtml(el.mergeButtons, "");
+    const html = ms.options.map(
+      (o) => `
+      <button class="merge-btn ${o.ok ? "ready" : ""}"
+              data-target-tier="${o.targetTier}"
+              style="${o.ok ? `border-color:${o.color};color:${o.color}` : ""}"
+              ${o.ok ? "" : "disabled"}>
+        ⬆ ${o.name} 조합
+        <small>${o.have} / ${o.need}개</small>
+      </button>`
+    ).join("");
+    setHtml(el.mergeButtons, html);
+  }
+  function towerStatsHtml(t) {
+    const dmg = Math.round(towerDamage(t));
+    const boosted = dmg !== t.damage;
+    return `공격력 <b>${dmg}</b>${boosted ? ` <span style="color:var(--gold)">(기본 ${t.damage})</span>` : ""} · 공속 <b>${t.cooldown.toFixed(2)}s</b> · 사거리 <b>${t.range}</b>` + (t.pulse ? " · <b>범위 전체 타격</b>" : "") + (t.splash ? ` · 범위 <b>${t.splash}</b>` : "") + (t.chain ? ` · 연쇄 <b>${t.chain.count}</b>` : "") + (t.stun ? ` · 기절 <b>${t.stun.duration}s</b>` : "") + (t.slow ? ` · 둔화 <b>${Math.round(t.slow.amount * 100)}%</b>` : "") + (t.burn ? ` · 화상 <b>${t.burn.dps}/s</b>` : "") + (t.pierceArmor ? " · <b>방어 무시</b>" : "");
+  }
+  function updateHud() {
+    el.gold.textContent = Math.floor(state.gold);
+    el.life.textContent = state.life;
+    el.wave.textContent = state.wave;
+    if (state.phase === "prep") {
+      setBtn(el.btnWave, { text: `⏩ 바로 시작 (${state.prepTimer.toFixed(1)}s)`, enabled: true });
+    } else if (state.phase === "combat") {
+      setBtn(el.btnWave, { text: "⚔ 전투 중...", enabled: false });
+    } else {
+      setBtn(el.btnWave, { text: "— 종료 —", enabled: false });
+    }
+    el.btnSpeed.textContent = `${"▶".repeat(state.speed)} ${state.speed}배속`;
+    el.btnSpeed.classList.toggle("active", state.speed > 1);
+    el.btnRestart.hidden = !(state.phase === "over" || state.phase === "clear");
+    el.statLine.textContent = `소환 ${state.stats.summons} · 합성 ${state.stats.merges} · 처치 ${state.stats.killed} · 전설 ${state.stats.legendaries} · 미션 ${state.stats.missions}`;
+    renderMissions();
+    renderUpgrades();
+    const sel = selectedTowers();
+    if (sel.length === 0) {
+      el.selTitle.textContent = "선택된 타워 없음";
+      el.selBadge.textContent = "";
+      el.selBadge.style.background = "transparent";
+      el.selStats.textContent = "빈 슬롯을 클릭하면 랜덤 타워가 소환됩니다.";
+      el.selDesc.textContent = "";
+      el.btnLegend.hidden = true;
+      el.btnSell.hidden = true;
+      renderMergeButtons(null);
+      return;
+    }
+    const base = sel[0];
+    if (sel.length === 1) {
+      el.selTitle.textContent = base.name;
+      el.selBadge.textContent = base.rarity.name;
+      el.selBadge.style.background = base.rarity.border;
+      el.selStats.innerHTML = towerStatsHtml(base);
+      el.selDesc.textContent = base.desc;
+      renderMergeButtons(base);
+      const ms = mergeStatus(base);
+      if (ms && ms.kind === "epic") {
+        setBtn(el.btnLegend, {
+          text: `★ 전설 조합 (1/${CONFIG.merge.legendaryRequired}) — 영웅을 더 선택하세요`,
+          enabled: false
+        });
+      } else {
+        el.btnLegend.hidden = true;
+      }
+    } else {
+      renderMergeButtons(null);
+      el.selTitle.textContent = `영웅 타워 ${sel.length}개 선택됨`;
+      el.selBadge.textContent = "전설 조합";
+      el.selBadge.style.background = "#ffc83d";
+      el.selStats.textContent = sel.map((t) => t.name).join("  +  ");
+      const ls = legendaryStatus(sel);
+      if (ls) {
+        setBtn(el.btnLegend, { text: `★ ${ls.text}`, enabled: ls.ok });
+        el.selDesc.textContent = ls.ok ? ls.target.desc : `결과 타워는 첫 번째로 선택한 [${sel[0].name}] 위치에 생성됩니다.`;
+      } else {
+        el.btnLegend.hidden = true;
+        el.selDesc.textContent = "";
+      }
+    }
+    if (sel.length === 1) {
+      setBtn(el.btnSell, { text: `💰 판매 (+${base.sellValue}G)`, enabled: true });
+    } else {
+      el.btnSell.hidden = true;
+    }
+  }
+
+  // src/js/entities/Projectile.js
+  var Projectile = class {
+    /**
+     * @param {object} cfg
+     * @param {number} cfg.x @param {number} cfg.y
+     * @param {import('./Enemy.js').Enemy} cfg.target
+     * @param {number} cfg.speed
+     * @param {string} cfg.color
+     * @param {number} cfg.size
+     * @param {(target:import('./Enemy.js').Enemy, x:number, y:number)=>void} cfg.onHit
+     */
+    constructor(cfg) {
+      this.x = cfg.x;
+      this.y = cfg.y;
+      this.target = cfg.target;
+      this.speed = cfg.speed;
+      this.color = cfg.color;
+      this.size = cfg.size ?? 4;
+      this.onHit = cfg.onHit;
+      this.dead = false;
+      this.life = 3;
+    }
+    update(dt) {
+      this.life -= dt;
+      if (this.life <= 0) {
+        this.dead = true;
+        return;
+      }
+      if (!this.target || this.target.dead || this.target.escaped) {
+        this.dead = true;
+        return;
+      }
+      const dx = this.target.x - this.x;
+      const dy = this.target.y - this.y;
+      const dist = Math.hypot(dx, dy);
+      const move = this.speed * dt;
+      if (dist <= move + this.target.radius) {
+        this.x = this.target.x;
+        this.y = this.target.y;
+        this.dead = true;
+        this.onHit(this.target, this.x, this.y);
+        return;
+      }
+      this.x += dx / dist * move;
+      this.y += dy / dist * move;
+    }
+  };
+
+  // src/js/systems/combat.js
+  function findTarget(tower) {
+    let best = null;
+    let bestProgress = -1;
+    for (const e of state.enemies) {
+      if (e.dead || e.escaped) continue;
+      const d = Math.hypot(e.x - tower.x, e.y - tower.y);
+      if (d > tower.range) continue;
+      if (e.traveled > bestProgress) {
+        bestProgress = e.traveled;
+        best = e;
+      }
+    }
+    return best;
+  }
+  function enemiesInRange(tower) {
+    const list = [];
+    for (const e of state.enemies) {
+      if (e.dead || e.escaped) continue;
+      if (Math.hypot(e.x - tower.x, e.y - tower.y) <= tower.range) list.push(e);
+    }
+    return list;
+  }
+  function applyStatus(tower, enemy) {
+    if (tower.slow) enemy.applySlow(tower.slow.amount, tower.slow.duration);
+    if (tower.burn) enemy.applyBurn(tower.burn.dps, tower.burn.duration);
+    if (tower.stun) enemy.applyStun(tower.stun.duration);
+  }
+  function applyHit(tower, target, x, y) {
+    const opts = { pierceArmor: tower.pierceArmor };
+    const dmg = towerDamage(tower);
+    if (tower.splash > 0) {
+      addEffect({ type: "burst", x, y, color: tower.color, radius: tower.splash, life: 0.25 });
+      for (const e of state.enemies) {
+        if (e.dead) continue;
+        const d = Math.hypot(e.x - x, e.y - y);
+        if (d <= tower.splash) {
+          const falloff = d <= tower.splash * 0.4 ? 1 : 0.6;
+          e.takeDamage(dmg * falloff, opts);
+          applyStatus(tower, e);
+        }
+      }
+      return;
+    }
+    target.takeDamage(dmg, opts);
+    applyStatus(tower, target);
+    if (tower.chain) {
+      let chainDmg = dmg * tower.chain.falloff;
+      let from = target;
+      const hitSet = /* @__PURE__ */ new Set([target]);
+      for (let i = 0; i < tower.chain.count; i++) {
+        let next = null;
+        let nearest = Infinity;
+        for (const e of state.enemies) {
+          if (e.dead || hitSet.has(e)) continue;
+          const d = Math.hypot(e.x - from.x, e.y - from.y);
+          if (d < nearest && d <= tower.chain.radius) {
+            nearest = d;
+            next = e;
+          }
+        }
+        if (!next) break;
+        addEffect({
+          type: "beam",
+          x1: from.x,
+          y1: from.y,
+          x2: next.x,
+          y2: next.y,
+          color: tower.color,
+          life: 0.15
+        });
+        next.takeDamage(chainDmg, opts);
+        applyStatus(tower, next);
+        hitSet.add(next);
+        from = next;
+        chainDmg *= tower.chain.falloff;
+      }
+    }
+  }
+  function firePulse(tower, targets) {
+    const opts = { pierceArmor: tower.pierceArmor };
+    const dmg = towerDamage(tower);
+    addEffect({
+      type: "ring",
+      x: tower.x,
+      y: tower.y,
+      color: tower.color,
+      radius: tower.range,
+      life: 0.4
+    });
+    for (const e of targets) {
+      e.takeDamage(dmg, opts);
+      applyStatus(tower, e);
+    }
+  }
+  function updateTower(tower, dt) {
+    if (tower.spawnAnim > 0) tower.spawnAnim = Math.max(0, tower.spawnAnim - dt * 3);
+    if (tower.cooldownTimer > 0) tower.cooldownTimer -= dt;
+    if (tower.pulse) {
+      if (tower.cooldownTimer > 0) return;
+      const targets = enemiesInRange(tower);
+      if (targets.length === 0) return;
+      tower.cooldownTimer = tower.cooldown;
+      firePulse(tower, targets);
+      return;
+    }
+    const target = findTarget(tower);
+    if (!target) return;
+    tower.angle = Math.atan2(target.y - tower.y, target.x - tower.x);
+    if (tower.cooldownTimer > 0) return;
+    tower.cooldownTimer = tower.cooldown;
+    state.projectiles.push(
+      new Projectile({
+        x: tower.x,
+        y: tower.y,
+        target,
+        speed: tower.projectileSpeed,
+        color: tower.color,
+        size: tower.isLegendary ? 7 : 3 + tower.tier,
+        onHit: (t, hx, hy) => applyHit(tower, t, hx, hy)
+      })
+    );
+  }
+  function collectKills() {
+    for (let i = state.enemies.length - 1; i >= 0; i--) {
+      const e = state.enemies[i];
+      if (e.dead) {
+        earn(e.reward, e.x, e.y);
+        state.stats.killed++;
+        addEffect({ type: "burst", x: e.x, y: e.y, color: e.color, radius: e.radius * 1.8, life: 0.22 });
+        if (e.missionId) onMissionEnemyKilled(e);
+        state.enemies.splice(i, 1);
+      }
+    }
+  }
+
+  // src/js/systems/wave.js
+  function startPrep() {
+    if (state.wave >= CONFIG.wave.finalWave) {
+      state.phase = "clear";
+      return;
+    }
+    state.phase = "prep";
+    state.prepTimer = CONFIG.wave.prepTime;
+  }
+  function skipPrep() {
+    if (state.phase !== "prep") return;
+    const seconds = Math.min(state.prepTimer, CONFIG.economy.skipBonusMaxSeconds);
+    const bonus = Math.floor(seconds * CONFIG.economy.skipBonusPerSecond);
+    if (bonus > 0) {
+      earn(bonus);
+      showToast(`빠른 시작 보너스 +${bonus}G`, 1.4);
+    }
+    beginWave();
+  }
+  function beginWave() {
+    state.wave++;
+    state.phase = "combat";
+    state.spawnTimer = 0;
+    state.spawnQueue = [];
+    const n = state.wave;
+    const rm = rewardScale(n);
+    for (const group of waveComposition(n)) {
+      const boss = !!ENEMIES[group.type]?.isBoss;
+      const hm = hpScale(n, boss);
+      for (let i = 0; i < group.count; i++) {
+        state.spawnQueue.push({ type: group.type, hm, rm, gap: group.gap });
+      }
+    }
+    showToast(
+      isBossWave(n) ? `⚠ ${n} 라운드 — 보스 등장!` : `${n} 라운드 시작`,
+      1.6
+    );
+  }
+  function updateWave(dt) {
+    if (state.phase === "prep") {
+      state.prepTimer -= dt;
+      if (state.prepTimer <= 0) beginWave();
+      handleEscapes();
+      return;
+    }
+    if (state.phase !== "combat") return;
+    if (state.spawnQueue.length > 0) {
+      state.spawnTimer -= dt;
+      if (state.spawnTimer <= 0) {
+        const next = state.spawnQueue.shift();
+        state.enemies.push(new Enemy(next.type, next.hm, next.rm));
+        state.spawnTimer = next.gap;
+      }
+    }
+    handleEscapes();
+    const remaining = state.enemies.filter((e) => !e.isMission).length;
+    if (state.phase === "combat" && state.spawnQueue.length === 0 && remaining === 0) {
+      const bonus = clearBonus(state.wave);
+      earn(bonus);
+      showToast(`${state.wave} 라운드 클리어! +${bonus}G`, 1.8);
+      refreshMissions(state.wave);
+      if (state.wave >= CONFIG.wave.finalWave) {
+        state.phase = "clear";
+      } else {
+        startPrep();
+      }
+    }
+  }
+  function handleEscapes() {
+    for (let i = state.enemies.length - 1; i >= 0; i--) {
+      const e = state.enemies[i];
+      if (!e.escaped) continue;
+      if (e.isMission) {
+        onMissionEnemyEscaped(e);
+      } else {
+        loseLife(e.isBoss ? CONFIG.life.bossDamage : CONFIG.life.normalDamage);
+      }
+      state.enemies.splice(i, 1);
+    }
+  }
+
+  // src/js/main.js
+  var canvas = document.getElementById("game");
+  canvas.width = CONFIG.canvas.width;
+  canvas.height = CONFIG.canvas.height;
+  var ctx = canvas.getContext("2d");
+  initHud({
+    // 등급별 합성 버튼 (고급 / 희귀 / 영웅)
+    merge: (targetTier) => {
+      const sel = selectedTowers();
+      if (sel.length === 1) mergeTo(sel[0], targetTier);
+    },
+    // 좌측 미션 도전
+    mission: (id) => startMission(id),
+    // 우측 등급 강화
+    upgrade: (tier) => buyUpgrade(tier)
+  });
+  bindInput(canvas);
+  el.btnWave.addEventListener("click", () => skipPrep());
+  el.btnSpeed.addEventListener("click", () => cycleSpeed());
+  window.addEventListener("keydown", (evt) => {
+    const n = Number(evt.key);
+    if (CONFIG.speed.options.includes(n)) setSpeed(n);
+  });
+  el.btnLegend.addEventListener("click", () => {
+    const sel = selectedTowers();
+    if (sel.length === CONFIG.merge.legendaryRequired) mergeLegendary(sel);
+  });
+  el.btnSell.addEventListener("click", () => {
+    const sel = selectedTowers();
+    if (sel.length !== 1) return;
+    const t = sel[0];
+    earn(t.sellValue, t.x, t.y);
+    state.towers.delete(t.tileIdx);
+    clearSelection();
+  });
+  el.btnRestart.addEventListener("click", () => {
+    resetState();
+    startPrep();
+  });
+  function update(dt) {
+    if (state.toast.timer > 0) state.toast.timer -= dt;
+    if (state.phase === "over" || state.phase === "clear") {
+      tickVisuals(dt);
+      return;
+    }
+    updateWave(dt);
+    for (const e of state.enemies) e.update(dt);
+    for (const t of state.towers.values()) updateTower(t, dt);
+    for (const p of state.projectiles) p.update(dt);
+    state.projectiles = state.projectiles.filter((p) => !p.dead);
+    collectKills();
+    tickVisuals(dt);
+  }
+  function tickVisuals(dt) {
+    for (const e of state.effects) e.life -= dt;
+    state.effects = state.effects.filter((e) => e.life > 0);
+    for (const f of state.floaters) {
+      f.life -= dt;
+      f.y += f.vy * dt;
+    }
+    state.floaters = state.floaters.filter((f) => f.life > 0);
+  }
+  var last = performance.now();
+  function loop(now) {
+    const dt = Math.min(0.05, (now - last) / 1e3);
+    last = now;
+    for (let i = 0; i < state.speed; i++) update(dt);
+    render(ctx);
+    updateHud();
+    requestAnimationFrame(loop);
+  }
+  resetState();
+  startPrep();
+  requestAnimationFrame(loop);
+  window.__GAME__ = {
+    state,
+    CONFIG,
+    api: {
+      summonAt,
+      mergeTo,
+      mergeOptions,
+      mergeLegendary,
+      legendaryStatus,
+      buyUpgrade,
+      upgradeCost,
+      startMission,
+      refreshMissions,
+      updateWave,
+      updateTower,
+      collectKills,
+      startPrep,
+      beginWave,
+      resetState,
+      tileIndex,
+      isBuildable
+    }
+  };
+})();
+
+  </script>
+</body>
+</html>
