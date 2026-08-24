@@ -9,6 +9,7 @@ import { legendaryRecipeList } from '../data/legendary.js';
 import { state, selectedTowers } from '../core/state.js';
 import { mergeStatus, legendaryStatus, familyName } from '../systems/merge.js';
 import { towerDamage, upgradeSummary } from '../systems/upgrade.js';
+import { summonCost } from '../systems/economy.js';
 import { missionSummary } from '../systems/mission.js';
 
 const el = {};
@@ -23,7 +24,7 @@ export function initHud(callbacks = {}) {
     'gold', 'life', 'wave', 'waveMax',
     'btnWave', 'btnSpeed', 'btnLegend', 'btnSell', 'btnRestart',
     'selTitle', 'selBadge', 'selStats', 'selDesc', 'recipeList', 'statLine',
-    'mergeButtons', 'missionList', 'upgradeList',
+    'mergeButtons', 'missionList', 'upgradeList', 'summonCost',
   ].forEach((id) => (el[id] = document.getElementById(id)));
 
   el.waveMax.textContent = CONFIG.wave.finalWave;
@@ -162,6 +163,11 @@ export function updateHud() {
     setBtn(el.btnWave, { text: '— 종료 —', enabled: false });
   }
 
+  // 소환 가격표 — 골드가 모자라면 붉게 표시
+  const cost = summonCost();
+  el.summonCost.innerHTML = `🎲 소환 <b>${cost}G</b>`;
+  el.summonCost.classList.toggle('short', state.gold < cost);
+
   // 배속 버튼
   el.btnSpeed.textContent = `${'▶'.repeat(state.speed)} ${state.speed}배속`;
   el.btnSpeed.classList.toggle('active', state.speed > 1);
@@ -182,7 +188,8 @@ export function updateHud() {
     el.selTitle.textContent = '선택된 타워 없음';
     el.selBadge.textContent = '';
     el.selBadge.style.background = 'transparent';
-    el.selStats.textContent = '빈 슬롯을 클릭하면 랜덤 타워가 소환됩니다.';
+    el.selStats.innerHTML =
+      `빈 슬롯을 클릭하면 랜덤 타워가 소환됩니다. · 소환 비용 <b style="color:var(--gold)">${summonCost()}G</b>`;
     el.selDesc.textContent = '';
     el.btnLegend.hidden = true;
     el.btnSell.hidden = true;
@@ -230,11 +237,19 @@ export function updateHud() {
     }
   }
 
-  // 판매 버튼 (단일 선택일 때만)
+  // 판매 버튼 (단일 선택일 때만) — 2단계 확인
   if (sel.length === 1) {
-    setBtn(el.btnSell, { text: `💰 판매 (+${base.sellValue}G)`, enabled: true });
+    const armed = state.sellArmed === base.tileIdx;
+    setBtn(el.btnSell, {
+      text: armed
+        ? `한 번 더 눌러 판매 (+${base.sellValue}G)`
+        : `💰 판매 (+${base.sellValue}G)`,
+      enabled: true,
+    });
+    el.btnSell.classList.toggle('armed', armed);
   } else {
     el.btnSell.hidden = true;
+    el.btnSell.classList.remove('armed');
   }
 }
 

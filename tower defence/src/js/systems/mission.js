@@ -13,6 +13,7 @@ import { hpScale, rewardScale } from '../data/waves.js';
 import { Enemy } from '../entities/Enemy.js';
 import { state, showToast, addFloater, addEffect } from '../core/state.js';
 import { earn } from './economy.js';
+import { SFX } from './audio.js';
 
 /** id로 미션 정의 찾기 */
 export function missionDef(id) {
@@ -84,6 +85,7 @@ export function onMissionEnemyKilled(enemy) {
   addFloater(enemy.x, enemy.y - 20, `미션 성공 +${reward}G`, '#4fd1a5');
   addEffect({ type: 'burst', x: enemy.x, y: enemy.y, color: '#4fd1a5', radius: 70, life: 0.6 });
   showToast(`${def.name} 성공! +${reward}G`, 2.2);
+  SFX.missionClear();
 
   st.clears++;
   state.stats.missions++;

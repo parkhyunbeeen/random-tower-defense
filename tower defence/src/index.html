@@ -9,24 +9,47 @@
   <link rel="stylesheet" href="./css/game.css" />
 </head>
 <body>
-  <div class="layout">
 
-    <!-- ===== 좌측: 미션 ===== -->
+  <!-- ===================== 타이틀 화면 ===================== -->
+  <div id="titleScreen" class="title-screen">
+    <div class="title-inner">
+      <p class="title-eyebrow">RANDOM TOWER DEFENSE</p>
+      <h1 class="title-name">랜덤 타워 디펜스</h1>
+      <p class="title-desc">
+        골드로 뽑은 <b>랜덤 타워</b>를 배치하고, 같은 타워를 <b>합성</b>해 등급을 올려<br />
+        30 라운드를 막아내세요. 영웅 3개를 맞추면 <b>전설 타워</b>가 열립니다.
+      </p>
+
+      <div class="title-menu">
+        <button id="btnStart" class="title-btn primary">▶ 시작하기</button>
+        <button id="btnTitleSettings" class="title-btn">⚙ 설정</button>
+      </div>
+
+      <p class="title-foot">프로토타입 v0.1 · 1판 약 20분 (3배속 사용 시 7분 내외)</p>
+    </div>
+  </div>
+
+  <!-- ===================== 게임 화면 ===================== -->
+  <div class="layout" id="gameRoot" hidden>
+
+    <!-- 좌측: 미션 -->
     <aside class="side">
       <h2 class="side-title">미션</h2>
       <p class="side-sub">전용 보스를 소환해 처치하면 골드를 받습니다. 놓쳐도 라이프는 깎이지 않습니다.</p>
       <div id="missionList" class="card-list"></div>
     </aside>
 
-    <!-- ===== 중앙: 게임 ===== -->
+    <!-- 중앙: 게임 -->
     <main class="main">
 
       <header class="hud">
         <div class="hud-item"><span class="ico">💰</span><span id="gold">0</span><small>골드</small></div>
         <div class="hud-item"><span class="ico">❤️</span><span id="life">0</span><small>라이프</small></div>
         <div class="hud-item"><span class="ico">🌊</span><span id="wave">0</span><small>/ <span id="waveMax">30</span> 라운드</small></div>
+        <div class="hud-cost" id="summonCost">🎲 소환 <b>50G</b></div>
         <div class="hud-spacer"></div>
         <div class="hud-stats" id="statLine"></div>
+        <button id="btnGear" class="gear" title="설정 (ESC)" aria-label="설정 열기">⚙</button>
       </header>
 
       <div class="stage">
@@ -44,12 +67,15 @@
           <h2 id="selTitle">선택된 타워 없음</h2>
           <span id="selBadge" class="badge"></span>
         </div>
-        <p id="selStats" class="stats">빈 슬롯을 클릭하면 랜덤 타워가 소환됩니다.</p>
+        <p id="selStats" class="stats">빈 슬롯을 클릭하면 랜덤 타워가 소환됩니다. (소환 비용 50G)</p>
         <p id="selDesc" class="desc"></p>
         <div id="mergeButtons" class="merge-row"></div>
         <div class="panel-actions">
           <button id="btnLegend" class="btn legend" hidden>★ 전설 합성</button>
-          <button id="btnSell" class="btn ghost" hidden>💰 판매</button>
+        </div>
+        <!-- 판매는 되돌릴 수 없으므로 합성 버튼과 줄을 나누고, 2단계 확인을 거칩니다 -->
+        <div class="sell-row">
+          <button id="btnSell" class="btn sell" hidden>💰 판매</button>
         </div>
       </section>
 
@@ -62,7 +88,8 @@
             <li>등급을 건너뛸 수 있습니다 — 같은 일반 타워가 <b>8개</b>면 한 번에 <b>영웅</b>까지</li>
             <li>합성 결과는 <b>클릭한 타워의 위치</b>에 생성됩니다</li>
             <li><b>영웅</b> 타워를 클릭한 뒤 다른 영웅 2개를 추가로 클릭 → 조합표에 맞으면 <b>전설</b> 생성</li>
-            <li><kbd>ESC</kbd> → 선택 해제 / <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> → 배속 전환</li>
+            <li><kbd>ESC</kbd> 또는 우측 상단 <b>⚙</b> → 설정창 (게임 일시정지)</li>
+            <li><b>우클릭</b> → 선택 해제 / <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> → 배속 전환</li>
           </ul>
         </details>
         <details>
@@ -73,13 +100,36 @@
 
     </main>
 
-    <!-- ===== 우측: 강화 ===== -->
+    <!-- 우측: 강화 -->
     <aside class="side">
       <h2 class="side-title">강화</h2>
       <p class="side-sub">등급별로 해당 타워 전체의 공격력이 올라갑니다. 레벨당 <b>+5%</b>.</p>
       <div id="upgradeList" class="card-list"></div>
     </aside>
 
+  </div>
+
+  <!-- ===================== 설정창 (타이틀 / 인게임 공용) ===================== -->
+  <div id="settingsModal" class="modal-backdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <div class="modal-head">
+        <h2 id="settingsTitle">설정</h2>
+        <button id="btnSettingsClose" class="modal-x" aria-label="닫기">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <label class="field" for="volume">
+          <span class="field-label">사운드 <b id="volumeValue">50</b></span>
+          <input id="volume" type="range" min="0" max="100" step="1" value="50" />
+        </label>
+        <p id="volumeHint" class="field-hint">0으로 내리면 음소거됩니다.</p>
+      </div>
+
+      <div class="modal-actions">
+        <button id="btnExitGame" class="btn danger" hidden>🚪 게임 나가기</button>
+        <button id="btnSettingsOk" class="btn primary">확인</button>
+      </div>
+    </div>
   </div>
 
   <script type="module" src="./js/main.js"></script>

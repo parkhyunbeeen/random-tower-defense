@@ -7,6 +7,7 @@ import { CONFIG } from '../data/config.js';
 import { MISSIONS } from '../data/missions.js';
 
 /** @typedef {'ready'|'prep'|'combat'|'clear'|'over'} Phase */
+/** @typedef {'title'|'playing'} Screen */
 
 /** 미션 상태 초기값 */
 function initialMissions() {
@@ -23,6 +24,15 @@ function initialMissions() {
 }
 
 export const state = {
+  /** @type {Screen} 타이틀 화면인지 게임 중인지 */
+  screen: 'title',
+
+  /** 설정창이 열려 있는지 — 열려 있으면 게임이 일시정지됩니다 */
+  settingsOpen: false,
+
+  /** 효과음 음량 0.0 ~ 1.0 */
+  volume: CONFIG.audio.defaultVolume,
+
   /** @type {Phase} */
   phase: 'ready',
 
@@ -56,6 +66,12 @@ export const state = {
   /** 선택된 타일 인덱스 목록 (전설 조합 시 최대 3개) */
   selection: [],
 
+  /**
+   * 판매 확인 대기 중인 타일 인덱스 (없으면 null).
+   * 실수로 파는 걸 막기 위해 판매는 2단계로 진행됩니다.
+   */
+  sellArmed: null,
+
   /** 스폰 대기열 */
   spawnQueue: [],
   spawnTimer: 0,
@@ -82,11 +98,18 @@ export function resetState() {
   state.effects = [];
   state.floaters = [];
   state.selection = [];
+  state.sellArmed = null;
   state.spawnQueue = [];
   state.spawnTimer = 0;
   state.stats = { killed: 0, merges: 0, summons: 0, legendaries: 0, upgrades: 0, missions: 0 };
   state.toast = { text: '', timer: 0 };
   state.speed = keepSpeed;
+  state.settingsOpen = false;
+}
+
+/** 게임이 실제로 진행되어야 하는 상태인지 (설정창이 열려 있으면 멈춤) */
+export function isRunning() {
+  return state.screen === 'playing' && !state.settingsOpen;
 }
 
 /** 배속을 다음 단계로 순환시킵니다. */
@@ -119,6 +142,7 @@ export function addEffect(effect) {
 /** 선택 해제 */
 export function clearSelection() {
   state.selection = [];
+  state.sellArmed = null;
 }
 
 /** 선택된 타워 객체 배열 */

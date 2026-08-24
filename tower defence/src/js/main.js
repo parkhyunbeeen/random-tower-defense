@@ -3,70 +3,150 @@
 // ============================================================
 
 import { CONFIG } from './data/config.js';
-import { state, resetState, selectedTowers, clearSelection, cycleSpeed, setSpeed } from './core/state.js';
+import {
+  state, resetState, selectedTowers, clearSelection,
+  cycleSpeed, setSpeed, isRunning, showToast,
+} from './core/state.js';
 import { bindInput } from './core/input.js';
 import { tileIndex, isBuildable } from './core/grid.js';
 import { summonAt } from './systems/summon.js';
 import { render } from './render/renderer.js';
 import { initHud, updateHud, hudElements } from './render/hud.js';
+import { initScreens, showGame, showTitle, toggleSettings, closeSettings } from './render/screens.js';
 import { updateTower, collectKills } from './systems/combat.js';
 import { updateWave, skipPrep, startPrep, beginWave } from './systems/wave.js';
 import { mergeTo, mergeOptions, mergeLegendary, legendaryStatus } from './systems/merge.js';
 import { earn } from './systems/economy.js';
 import { buyUpgrade, upgradeCost } from './systems/upgrade.js';
 import { startMission, refreshMissions } from './systems/mission.js';
+import { SFX } from './systems/audio.js';
 
 const canvas = document.getElementById('game');
 canvas.width = CONFIG.canvas.width;
 canvas.height = CONFIG.canvas.height;
 const ctx = canvas.getContext('2d');
 
+// --- 화면(타이틀/게임) + 설정창 ------------------------------------
+
+initScreens({
+  // [시작하기] — 새 판을 시작합니다
+  start: () => {
+    resetState();
+    startPrep();
+    showGame();
+  },
+  // [게임 나가기] — 타이틀로 돌아갑니다
+  exit: () => {
+    showTitle();
+    resetState();
+    startPrep();
+  },
+});
+
+// --- HUD 버튼 배선 --------------------------------------------------
+
 initHud({
-  // 등급별 합성 버튼 (고급 / 희귀 / 영웅)
   merge: (targetTier) => {
     const sel = selectedTowers();
-    if (sel.length === 1) mergeTo(sel[0], targetTier);
+    if (sel.length === 1 && mergeTo(sel[0], targetTier)) SFX.merge(targetTier);
   },
-  // 좌측 미션 도전
-  mission: (id) => startMission(id),
-  // 우측 등급 강화
-  upgrade: (tier) => buyUpgrade(tier),
+  mission: (id) => {
+    if (startMission(id)) SFX.missionStart();
+  },
+  upgrade: (tier) => {
+    if (buyUpgrade(tier)) SFX.upgrade();
+  },
 });
 
 bindInput(canvas);
 
-// --- 버튼 핸들러 -------------------------------------------------
-
-hudElements.btnWave.addEventListener('click', () => skipPrep());
+hudElements.btnWave.addEventListener('click', () => {
+  if (!isRunning()) return;
+  skipPrep();
+});
 
 hudElements.btnSpeed.addEventListener('click', () => cycleSpeed());
 
-// 숫자키 1 / 2 / 3 으로도 배속 전환
-window.addEventListener('keydown', (evt) => {
-  const n = Number(evt.key);
-  if (CONFIG.speed.options.includes(n)) setSpeed(n);
-});
-
 hudElements.btnLegend.addEventListener('click', () => {
   const sel = selectedTowers();
-  if (sel.length === CONFIG.merge.legendaryRequired) mergeLegendary(sel);
+  if (sel.length === CONFIG.merge.legendaryRequired && mergeLegendary(sel)) {
+    SFX.legendary();
+  }
 });
+
+// 판매는 되돌릴 수 없으므로 두 번 눌러야 실행됩니다.
+// 첫 클릭은 "확인 대기"로 들어가고, 3초 안에 다시 누르지 않으면 저절로 풀립니다.
+let sellTimer = null;
+
+function disarmSell() {
+  state.sellArmed = null;
+  if (sellTimer) { clearTimeout(sellTimer); sellTimer = null; }
+}
 
 hudElements.btnSell.addEventListener('click', () => {
   const sel = selectedTowers();
   if (sel.length !== 1) return;
   const t = sel[0];
+
+  // 1단계 — 확인 대기
+  if (state.sellArmed !== t.tileIdx) {
+    disarmSell();
+    state.sellArmed = t.tileIdx;
+    showToast('한 번 더 누르면 판매됩니다.', 2);
+    SFX.click();
+    sellTimer = setTimeout(disarmSell, 3000);
+    return;
+  }
+
+  // 2단계 — 실제 판매
+  disarmSell();
   earn(t.sellValue, t.x, t.y);
   state.towers.delete(t.tileIdx);
   clearSelection();
+  SFX.click();
 });
 
 hudElements.btnRestart.addEventListener('click', () => {
+  SFX.click();
   resetState();
   startPrep();
 });
 
-// --- 게임 루프 ---------------------------------------------------
+// --- 키보드 ---------------------------------------------------------
+
+window.addEventListener('keydown', (evt) => {
+  // ESC — 인게임 설정창 열기/닫기
+  if (evt.key === 'Escape') {
+    evt.preventDefault();
+    toggleSettings();
+    return;
+  }
+  // 설정창이 열려 있으면 다른 단축키는 막습니다
+  if (state.settingsOpen) return;
+
+  const n = Number(evt.key);
+  if (CONFIG.speed.options.includes(n)) setSpeed(n);
+});
+
+// --- 게임 루프 ------------------------------------------------------
+
+/** 라이프·페이즈 변화를 감지해 효과음을 울립니다 */
+let prevLife = 0;
+let prevWave = 0;
+let prevPhase = '';
+
+function watchForSounds() {
+  if (state.life < prevLife) SFX.life();
+  if (state.wave > prevWave && state.wave > 0) SFX.waveStart();
+  if (state.phase !== prevPhase) {
+    if (state.phase === 'over') SFX.gameOver();
+    else if (state.phase === 'clear') SFX.gameClear();
+    else if (state.phase === 'prep' && prevPhase === 'combat') SFX.waveClear();
+  }
+  prevLife = state.life;
+  prevWave = state.wave;
+  prevPhase = state.phase;
+}
 
 function update(dt) {
   if (state.toast.timer > 0) state.toast.timer -= dt;
@@ -104,17 +184,23 @@ function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
 
-  // 배속만큼 시뮬레이션을 반복 실행합니다.
-  // dt 에 배속을 곱하지 않는 이유: 한 프레임 이동 거리가 커지면
-  // 빠른 투사체가 적을 지나쳐 버려 명중 판정이 새기 때문입니다.
-  for (let i = 0; i < state.speed; i++) update(dt);
+  // 타이틀 화면이거나 설정창이 열려 있으면 시뮬레이션을 멈춥니다
+  if (isRunning()) {
+    // 배속만큼 시뮬레이션을 반복 실행합니다.
+    // dt 에 배속을 곱하지 않는 이유: 한 프레임 이동 거리가 커지면
+    // 빠른 투사체가 적을 지나쳐 버려 명중 판정이 새기 때문입니다.
+    for (let i = 0; i < state.speed; i++) update(dt);
+    watchForSounds();
+  }
 
-  render(ctx);
-  updateHud();
+  if (state.screen === 'playing') {
+    render(ctx);
+    updateHud();
+  }
   requestAnimationFrame(loop);
 }
 
-// --- 시작 -------------------------------------------------------
+// --- 시작 -----------------------------------------------------------
 
 resetState();
 startPrep();
@@ -131,5 +217,6 @@ window.__GAME__ = {
     buyUpgrade, upgradeCost, startMission, refreshMissions,
     updateWave, updateTower, collectKills, startPrep, beginWave, resetState,
     tileIndex, isBuildable,
+    showGame, showTitle, toggleSettings, closeSettings,
   },
 };

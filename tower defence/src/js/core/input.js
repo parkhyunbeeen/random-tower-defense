@@ -4,10 +4,11 @@
 
 import { CONFIG } from '../data/config.js';
 import { MAX_MERGE_TIER } from '../data/towers.js';
-import { state, clearSelection } from './state.js';
+import { state, clearSelection, isRunning } from './state.js';
 import { pixelToTile, tileIndex, isBuildable } from './grid.js';
 import { summonAt } from '../systems/summon.js';
 import { setHoverTile } from '../render/renderer.js';
+import { SFX } from '../systems/audio.js';
 
 function canvasPos(canvas, evt) {
   const rect = canvas.getBoundingClientRect();
@@ -59,7 +60,14 @@ export function bindInput(canvas) {
 
   canvas.addEventListener('mouseleave', () => setHoverTile(null));
 
+  // 우클릭 → 선택 해제 (ESC 는 설정창 열기로 옮겼습니다)
+  canvas.addEventListener('contextmenu', (evt) => {
+    evt.preventDefault();
+    clearSelection();
+  });
+
   canvas.addEventListener('click', (evt) => {
+    if (!isRunning()) return;
     if (state.phase === 'over' || state.phase === 'clear') return;
 
     const { x, y } = canvasPos(canvas, evt);
@@ -80,11 +88,7 @@ export function bindInput(canvas) {
 
     // 빈 슬롯 → 랜덤 소환
     const tower = summonAt(idx);
+    if (tower) SFX.summon();
     state.selection = tower ? [idx] : [];
-  });
-
-  // ESC → 선택 해제
-  window.addEventListener('keydown', (evt) => {
-    if (evt.key === 'Escape') clearSelection();
   });
 }
